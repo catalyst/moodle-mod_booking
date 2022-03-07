@@ -330,6 +330,9 @@ class option_form extends \core_form\dynamic_form {
         // Add date handler.
 
 
+        // TODO: date handler analog zum price handler.
+        // eine date handler klasse, die sich um semester UND um die eingabe von daten kümmert
+
         // Add custom fields.
         $handler = booking_handler::create();
         $handler->instance_form_definition($mform, $optionid);
