@@ -42,6 +42,8 @@ class optiondate_form extends \core_form\dynamic_form {
         $mform = $this->_form;
         $optiondateshandler = new optiondates_handler();
         $optiondateshandler->add_optiondates_for_semesters_to_mform($mform);
+        $mform->addElement('hidden', 'cmid', $this->_customdata['id']);
+        $mform->setType('cmid', PARAM_TEXT);
         $this->add_action_buttons(false, 'Add');
     }
 
@@ -49,7 +51,7 @@ class optiondate_form extends \core_form\dynamic_form {
      * Todo.
      */
     protected function check_access_for_dynamic_submission(): void {
-        require_capability('moodle/user:manageownfiles', $this->get_context_for_dynamic_submission());
+        require_capability('mod/booking:addeditownoption', $this->get_context_for_dynamic_submission());
     }
 
     /**
@@ -70,6 +72,7 @@ class optiondate_form extends \core_form\dynamic_form {
         $semester = $optiondateshandler->get_semester($data->semester);
         $dayinfo = $optiondateshandler->translate_string_to_day($data->reocurringdatestring);
         $dates = $optiondateshandler->get_date_for_specific_day_between_dates($semester->startdate, $semester->enddate, $dayinfo);
+        $dates['cmid'] = $this->_ajaxformdata['id'];
         return $dates;
 
     }
@@ -98,8 +101,11 @@ class optiondate_form extends \core_form\dynamic_form {
      * @return \context
      */
     protected function get_context_for_dynamic_submission(): \context {
-        global $USER;
-        return \context_module::instance(5);
+        $id = $this->_ajaxformdata['id'];
+        if (!$id) {
+            $id = $this->optional_param('cmid', '', PARAM_RAW);
+        }
+        return \context_module::instance($id);
     }
 
     /**
@@ -113,7 +119,7 @@ class optiondate_form extends \core_form\dynamic_form {
      * @return \moodle_url
      */
     protected function get_page_url_for_dynamic_submission(): moodle_url {
-        return new moodle_url('/mod/booking/editoptions', array());
+        return new moodle_url('/mod/booking/editoptions', array('id' => 1));
     }
 
     /**

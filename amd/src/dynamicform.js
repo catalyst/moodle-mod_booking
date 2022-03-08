@@ -23,9 +23,10 @@ import DynamicForm from 'core_form/dynamicform';
 import Templates from 'core/templates';
 // ...
 
-const dynamicForm1 = new DynamicForm(document.querySelector('#miniformcontainer'), 'mod_booking\\form\\optiondate_form');
-export const init = () => {
-dynamicForm1.load();
+const dynamicForm1 = new DynamicForm(document.querySelector('#dateform'), 'mod_booking\\form\\optiondate_form');
+export const init = (cmid) => {
+console.log(cmid);
+dynamicForm1.load({'id': cmid});
 datelistinit();
 dynamicForm1.addEventListener(dynamicForm1.events.FORM_SUBMITTED, (e) => {
     e.preventDefault();
