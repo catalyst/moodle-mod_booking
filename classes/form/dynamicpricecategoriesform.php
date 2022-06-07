@@ -229,8 +229,6 @@ class dynamicpricecategoriesform extends dynamic_form {
         $mform->setType('disablepricecategory', PARAM_INT);
         $mform->setDefault('disablepricecategory', 0);
 
-        $repeatedprices[] = $mform->createElement('submit', 'deleteprice', get_string('deletepricebtn', 'mod_booking'));
-
         $numberofpricestoshow = 1;
         if ($existingprices = $DB->get_records('booking_pricecategories')) {
             $numberofpricestoshow = count($existingprices);
@@ -239,9 +237,7 @@ class dynamicpricecategoriesform extends dynamic_form {
         $repeateloptions['pricecategoryidentifier']['disabledif'] = array('disablepricecategory', 'eq', 1);
         $repeateloptions['pricecategoryname']['disabledif'] = array('disablepricecategory', 'eq', 1);
         $repeateloptions['pricedefaultvalue']['disabledif'] = array('disablepricecategory', 'eq', 1);
-        $repeateloptions['disablepricecategory']['disabledif'] = array('pricecategoryidentifier', 'eq', 'default');
-        // If we use 'hideif' then the 'Disable price category' label are not shown on the form.
-        // $repeateloptions['disablepricecategory']['disabledif'] = array('pricecategoryidentifier', 'eq', 'default');
+        $repeateloptions['disablepricecategory']['hideif'] = array('pricecategoryidentifier', 'eq', 'default');
 
         $this->repeat_elements(
         $repeatedprices,
@@ -251,8 +247,7 @@ class dynamicpricecategoriesform extends dynamic_form {
         'addprice',
         1,
         get_string('addprice', 'mod_booking'),
-        true,
-        'deleteprice'
+        true
         );
 
         // Buttons.
@@ -335,7 +330,6 @@ class dynamicpricecategoriesform extends dynamic_form {
                 if ($data->identifier !== $formdata->pricecategoryidentifier[$key]
                     || $data->name !== $formdata->pricecategoryname[$key]
                     || $data->defaultvalue !== $formdata->pricedefaultvalue[$key]
-                    || $data->disabled !== $formdata->disablepricecategory[$key]
                 ) {
                     $data->id = $value;
                     $data->ordernum = $formdata->pricecategoryordernum[$key];

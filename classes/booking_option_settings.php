@@ -328,14 +328,16 @@ class booking_option_settings {
             } else {
                 $this->customfields = $dbrecord->customfields;
             }
+            if (class_exists('entitiesrelation_handler')) {
 
-            // If the key "entity" is not yet set, we need to load them via handler first.
-            if (!isset($dbrecord->entity)) {
-                $this->load_entity($optionid);
-                $dbrecord->entity = $this->entity;
-            } else {
-                $this->entity = $dbrecord->entity;
+                if (!isset($dbrecord->entity)) {
+                    $this->load_entity($optionid);
+                    $dbrecord->entity = $this->entity;
+                } else {
+                    $this->entity = $dbrecord->entity;
+                }
             }
+            // If the key "entity" is not yet set, we need to load them via handler first.
 
             return $dbrecord;
         } else {
@@ -557,6 +559,7 @@ class booking_option_settings {
      * @param int $optionid
      */
     private function load_entity(int $optionid) {
+
         $handler = new entitiesrelation_handler('bookingoption');
         $data = $handler->get_instance_data($optionid);
 
