@@ -693,7 +693,7 @@ class booking_option_settings {
     public static function return_sql_for_teachers($searchparams = []): array {
 
         // Testing.
-        // $searchparams = [['sportart' => 'basketball'], ['sportart' => 'fussball'], ['sportart' => 'bodystyling']];
+        $searchparams = [['firstname' => 'billy']];
 
         global $DB;
 
@@ -711,6 +711,8 @@ class booking_option_settings {
             "'\"}'"]);
         // $innerselect = 'bt.id';
         $where = '';
+        $params = [];
+
         $from = 'LEFT JOIN
         (
             SELECT bt.optionid, ' . $innerselect . ' as teacherobject
@@ -720,7 +722,38 @@ class booking_option_settings {
         ) bt1
         ON bt1.optionid = bo.id';
 
-        $params = [];
+        // As this is a complete subrequest, we have to add the "where" to the outer table, where it is already rendered.
+        $counter = 0;
+        foreach ($searchparams as $searchparam) {
+
+            if (!$key = key($searchparam)) {
+                throw new moodle_exception('wrongstructureofsearchparams', 'mod_booking');
+            }
+            $value = $searchparam[$key];
+
+            // Only add Or if we are not in the first line.
+            $where .= $counter > 0 ? ' OR ' : ' AND (';
+
+            // We can't use this syntax at them moment, because the moodle sql_group_concat function doesn't let us create a json object.
+            // $where .= $DB->sql_like('s1.customfields', '\"fieldname\"\:\"' . $key . '\", \"fieldvalue\"\:\"' . $value .'\"', false);
+
+            $value = "%\"$key\"\:\"$value\"%";
+
+            // Make sure we never use the param more than once.
+            if (isset($params[$key])) {
+                $key = $key . $counter;
+            }
+
+            // $value = "%\"fieldname\"\:\"%";
+            $where .= $DB->sql_like('s1.teacherobjects', ":$key", false);
+
+            // Now we have to add the values to our params array.
+            $params[$key] = $value;
+            $counter++;
+        }
+        // If we ran through the loop at least once, we close it again here.
+        $where .= $counter > 0 ? ') ' : '';
+
 
         return [$select, $from, $where, $params];
     }
