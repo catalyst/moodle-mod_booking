@@ -587,38 +587,6 @@ class booking {
         $groupby = "GROUP BY bo.id
                     ) s1";
 
-        // $where = "{$DB->sql_like('s1.cfobjects', '"fieldvalue:\":cfsearchtext\"%', false)}) ";
-
-        // $limit = '';
-        // $rsearch = $this->searchparameters($searchtext);
-        // $search = $rsearch['query'];
-        // $params = array_merge(array('bookingid' => $this->id), $rsearch['params']);
-
-        // if ($limitnum != 0) {
-        //     $limit = " LIMIT {$limitfrom} OFFSET {$limitnum}";
-        // }
-
-        // $from = "{booking_options} bo";
-        // $where = "bo.bookingid = :bookingid {$search}";
-        // if (strlen($searchtext) !== 0) {
-        //     $from .= "
-        //         JOIN {customfield_data} cfd
-        //         ON bo.id=cfd.instanceid
-        //         JOIN {customfield_field} cff
-        //         ON cfd.fieldid=cff.id
-        //         ";
-        //     // Strip column close.
-        //     $where = substr($where, 0, -1);
-        //     // Add another tag.
-        //     $where .= " OR {$DB->sql_like('cfd.value', ':cfsearchtext', false)}) ";
-        //     // In a future iteration, we can add the specification in which customfield we want to search.
-        //     // For From JOIN {customfield_field} cff.
-        //     // ON cfd.fieldid=cff.id .
-        //     // And for Where.
-        //     // AND cff.name like 'fieldname'.
-        //     $params['cfsearchtext'] = $searchtext;
-        // }
-
         // If the user does not have the capability to see invisible options...
         if (!has_capability('mod/booking:canseeinvisibleoptions', $this->context)) {
             // ... then only show visible options.
@@ -630,17 +598,20 @@ class booking {
 
         list($select1, $from1, $where1, $params1) = booking_option_settings::return_sql_for_customfield();
         list($select2, $from2, $where2, $params2) = booking_option_settings::return_sql_for_teachers();
+        list($select3, $from3, $where3, $params3) = booking_option_settings::return_sql_for_files();
 
         // The $outerfrom takes all the select from the supplementary selects.
         $outerfrom .= ", $select1 ";
         $outerfrom .= ", $select2 ";
+        $outerfrom .= ", $select3 ";
 
         // The innerfrom takes all the froms from the supplementary froms.
         $innerfrom .= " $from1 ";
         $innerfrom .= " $from2 ";
+        $innerfrom .= " $from3 ";
 
         // Now we merge all the params arrays.
-        $params = array_merge($params, $params1, $params2);
+        $params = array_merge($params, $params1, $params2, $params3);
 
         // We build everything together.
         $from = $outerfrom;
@@ -653,8 +624,15 @@ class booking {
         // Add the where at the right place.
         $where .= " $where1 ";
         $where .= " $where2 ";
+        $where .= " $where3 ";
 
         return [$fields, $from, $where, $params];
+    }
+
+    public static function get_option_sql(int $optionid) {
+
+        $booking = singleton_service::get_instance_of_booking_by_optionid($optionid);
+        return $booking->get_all_options(0, 0, "optionid=$optionid");
     }
 
     /**
