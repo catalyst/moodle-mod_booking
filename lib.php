@@ -445,6 +445,7 @@ function booking_add_instance($booking) {
 
     // To avoid errors.
     $booking->bookingpolicy = $booking->bookingpolicy['text'] ?? '';
+    $booking->notificationtext = $booking->notificationtext['text'] ?? '';
     // Insert answer options from mod_form.
     $booking->id = $DB->insert_record("booking", $booking);
 
