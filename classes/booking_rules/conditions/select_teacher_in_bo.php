@@ -129,8 +129,10 @@ class select_teacher_in_bo implements booking_rule_condition {
      */
     public function execute(stdClass &$sql, array &$params) {
 
+        global $DB;
+
         // We pass the restriction to the userid in the params.
-        // If its not 0, we add the restirction.
+        // If its not 0, we add the restriction.
         $anduserid = '';
         if (!empty($params['userid'])) {
             // We cannot use params twice, so we need to use userid2.
@@ -138,8 +140,9 @@ class select_teacher_in_bo implements booking_rule_condition {
             $anduserid = "AND bt.userid = :userid2";
         }
 
+        $concat = $DB->sql_concat("bo.id", "'-'", "bt.userid");
         // We need the hack with uniqueid so we do not lose entries ...as the first column needs to be unique.
-        $sql->select = " CONCAT(bo.id, '-', bt.userid) uniqueid, " . $sql->select;
+        $sql->select = " $concat uniqueid, " . $sql->select;
         $sql->select .= ", bt.userid userid ";
 
         $sql->from .= " JOIN {booking_teachers} bt ON bo.id = bt.optionid ";

@@ -162,10 +162,10 @@ class rule_daysbefore implements booking_rule {
 
         $record->rulejson = json_encode($jsonobject);
         $record->rulename = $this->rulename;
-        $record->bookingid = $data->bookingid ?? 0;
+        $record->contextid = $data->contextid ?? 1;
 
         // If we can update, we add the id here.
-        if ($data->id) {
+        if ($data->id ?? false) {
             $record->id = $data->id;
             $DB->update_record('booking_rules', $record);
         } else {
@@ -283,8 +283,8 @@ class rule_daysbefore implements booking_rule {
             $params['optionid'] = $optionid;
         }
 
+        // When we want to restrict the userid, we just pass on the param to the condition like this.
         if (!empty($userid)) {
-            $anduserid = "AND ud.userid = :userid";
             $params['userid'] = $userid;
         }
 

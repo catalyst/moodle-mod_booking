@@ -50,6 +50,15 @@ class behat_mod_booking_generator extends behat_generator_base {
                 'datagenerator' => 'semester',
                 'required' => ['identifier', 'name', 'startdate', 'enddate'],
             ],
+            'rules' => [
+                'datagenerator' => 'rule',
+                'required' => [
+                        'conditionname', 'contextid',
+                        'name', 'actionname', 'actiondata',
+                        'rulename', 'ruledata',
+                ],
+                'switchids' => ['booking' => 'bookingid'],
+            ],
         ];
     }
 

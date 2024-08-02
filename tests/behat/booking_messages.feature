@@ -26,9 +26,10 @@ Feature: Test messaging features in a booking
     And the following "mod_booking > options" exist:
       | booking    | text                        | course | description  | teachersforoption |
       | My booking | Option: mail to participant | C1     | Option deskr | teacher1          |
+    And I change viewport size to "1366x10000"
 
   @javascript
-  Scenario: Booking option: send reminder mail to participant
+  Scenario: Booking option: send custom reminder mail to participant
     Given I am on the "My booking" Activity page logged in as teacher1
     And I click on "Settings" "icon" in the ".allbookingoptionstable_r1" "css_element"
     And I click on "Book other users" "link" in the ".allbookingoptionstable_r1" "css_element"
@@ -45,10 +46,17 @@ Feature: Test messaging features in a booking
       | Message | Dear, Firstly, I would like to thank you for booking my Course |
     And I press "Send message"
     And I should see "Your message has been sent."
-    # And I run all adhoc tasks
-    # And I open the link "webserver/_/mail"
-    # Then I should see "Teacher 1 (via Acceptance test site)"
-    # And I should see "Behat test"
+    And I log out
+    ## Send messages via cron and verify via events log
+    And I log in as "admin"
+    When I trigger cron
+    And I wait "1" seconds
+    And I run all adhoc tasks
+    And I visit "/report/loglive/index.php"
+    Then I should see "Booking option booked"
+    And I should see "Custom message: An e-mail with subject 'Behat test' has been sent to user with id:"
+    ## Logout is mandatory for admin pages to avoid error
+    And I log out
 
   @javascript
   Scenario: Teacher books a booking option and get email confirmation
@@ -74,8 +82,8 @@ Feature: Test messaging features in a booking
     ## And I should see "Booking confirmation for New option - Webinar"
 
   @javascript
-  Scenario: Teacher book students into booking option and sends mails to them
-    Given I am on the "My booking" Activity page logged in as teacher1
+  Scenario: Admin book students into booking option and sends mails to them
+    Given I am on the "My booking" Activity page logged in as admin
     And I click on "Settings" "icon" in the ".allbookingoptionstable_r1" "css_element"
     And I click on "Book other users" "link" in the ".allbookingoptionstable_r1" "css_element"
     And I click on "Student 1 (student1@example.com)" "text"
@@ -84,8 +92,14 @@ Feature: Test messaging features in a booking
     And I follow "<< Back to responses"
     And I click on "selectall" "checkbox"
     And I click on "Send reminder e-mail" "button"
-    Then I should see "Notification e-mail has been sent!"
-    ## Next step(s) cause faiure (coding error, email was not sent):
-    ## Then I trigger cron
-    ## And I wait "1" seconds
-    ## And I run all adhoc tasks
+    And I should see "Notification e-mail has been sent!"
+    ## Send messages via cron and verify via events log
+    When I trigger cron
+    And I wait "1" seconds
+    And I run all adhoc tasks
+    And I visit "/report/loglive/index.php"
+    Then I should see "Booking option booked"
+    And I should see "Reminder sent from report: An e-mail with subject 'Reminder: Your booked course' has been sent to user with id:"
+    And I should see "Booking confirmation: An e-mail with subject 'Booking confirmation for Option: mail to participant' has been sent to user with id:"
+    ## Logout is mandatory for admin pages to avoid error
+    And I log out

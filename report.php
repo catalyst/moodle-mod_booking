@@ -177,10 +177,7 @@ $bookingoption->get_url_params();
 $optionteachers = $bookingoption->get_teachers();
 
 // Paging.
-$paging = $bookingoption->booking->settings->paginationnum;
-if ($paging < 1) {
-    $paging = 25;
-}
+$paging = 50; // Currently hardcoded. We might need a new setting for this in a future release.
 
 // Capability checks.
 $isteacher = booking_check_if_teacher($bookingoption->option);
@@ -451,7 +448,7 @@ if (!$tableallbookings->is_downloading()) {
             foreach ($allselectedusers as $value) {
                 $user = new stdClass();
                 $user->id = $value;
-                if (!$tmpbooking->user_submit_response($user, $optionid, 0, false, MOD_BOOKING_VERIFIED)) {
+                if (!$tmpbooking->user_submit_response($user, $optionid, 0, 0, MOD_BOOKING_VERIFIED)) {
                     redirect($url, get_string('bookingfulldidntregister', 'mod_booking'), 5);
                 }
             }
@@ -642,7 +639,7 @@ if (!$tableallbookings->is_downloading()) {
                 "{$value->firstname} {$value->lastname}");
     }
 
-    $isteacherofthisoption = booking_check_if_teacher($bookingoption->booking->settings);
+    $isteacherofthisoption = booking_check_if_teacher($bookingoption->settings);
 
     $linkst = '';
     if (has_capability('mod/booking:communicate', $context) ||

@@ -639,7 +639,7 @@ class bookingoptions_wbtable extends wunderbyte_table {
                 $OUTPUT->pix_icon('t/print', get_string('bookedtext', 'mod_booking')),
                 [
                     'target' => '_blank',
-                    'class' => 'pr-3',
+                    'class' => 'text-primary pr-3',
                     'aria-label' => get_string('bookedtext', 'mod_booking'),
                 ]);
         }
@@ -651,12 +651,13 @@ class bookingoptions_wbtable extends wunderbyte_table {
                         'id' => $cmid,
                         'optionid' => $optionid,
                         'returnto' => 'url',
-                        'returnurl' => $returnurl
+                        'returnurl' => $returnurl,
                     ]
                 ),
                 $OUTPUT->pix_icon('i/edit', get_string('editbookingoption', 'mod_booking')),
                 [
                     'target' => '_self',
+                    'class' => 'text-primary',
                     'aria-label' => get_string('editbookingoption', 'mod_booking'),
                 ]);
         }
@@ -1001,5 +1002,17 @@ class bookingoptions_wbtable extends wunderbyte_table {
             $ret = get_string('bookingclosingtime', 'mod_booking') . ": " . $renderedbookingclosingtime;
         }
         return $ret;
+    }
+
+    /**
+     * This function is called for each data row to allow processing of the
+     * "attachment" value.
+     *
+     * @param object $values Contains object with all the values of record.
+     * @return string a string containing a link to the attachment
+     * @throws coding_exception
+     */
+    public function col_attachment($values) {
+        return booking_option::render_attachments($values->id, 'mod-booking-option-attachments mb-2');
     }
 }

@@ -78,7 +78,7 @@ class mod_booking_generator extends testing_module_generator {
 
         $defaultsettings = [
             'assessed' => 0,
-            'showviews' => 'mybooking,myoptions,showall,showactive,myinstitution',
+            'showviews' => 'showall,showactive,mybooking,myoptions,myinstitution',
             'whichview' => 'showall',
             'optionsfields' => 'description,statusdescription,teacher,showdates,dayofweektime,
                                 location,institution,minanswers',
@@ -142,12 +142,15 @@ class mod_booking_generator extends testing_module_generator {
         $record->cmid = $cmb1->id;
         $record->identifier = booking_option::create_truly_unique_option_identifier();
 
+        $record->addtocalendar = !empty($record->addtocalendar) ? $record->addtocalendar : 0;
+        $record->maxanswers = !empty($record->maxanswers) ? $record->maxanswers : 0;
+
         // Process option teachers.
         if (!empty($record->teachersforoption)) {
             $teacherarr = explode(',', $record->teachersforoption);
             $record->teachersforoption = [];
             foreach ($teacherarr as $teacher) {
-                $record->teachersforoption[] = $this->get_user($teacher);
+                $record->teachersforoption[] = $this->get_user(trim($teacher));
             }
         }
 
@@ -214,7 +217,6 @@ class mod_booking_generator extends testing_module_generator {
         return $record;
     }
 
-
     /**
      * Function to create a dummy semester option.
      *
@@ -227,6 +229,46 @@ class mod_booking_generator extends testing_module_generator {
         $record = (object) $record;
 
         $record->id = $DB->insert_record('booking_semesters', $record);
+
+        return $record;
+    }
+
+    /**
+     * Function to create a dummy rule for bookings.
+     *
+     * @param array|stdClass $ruledraft
+     * @return stdClass the booking rule object
+     */
+    public function create_rule($ruledraft = null) {
+        global $DB;
+
+        $ruledraft = (object) $ruledraft;
+
+        $record = new stdClass;
+        $record->bookingid = isset($ruledraft->bookingid) ? $ruledraft->bookingid : 0;
+        $record->contextid = isset($ruledraft->contextid) ? $ruledraft->contextid : 1;
+        $record->rulename = $ruledraft->rulename;
+        $record->eventname = '';
+
+        $ruleobject = new stdClass;
+        $ruleobject->conditionname = $ruledraft->conditionname;
+        $ruleobject->conditiondata = isset($ruledraft->conditiondata) ? json_decode($ruledraft->conditiondata) : '';
+        $ruleobject->name = $ruledraft->name;
+        $ruleobject->actionname = $ruledraft->actionname;
+        $ruleobject->actiondata = json_decode($ruledraft->actiondata);
+        $ruleobject->rulename = $ruledraft->rulename;
+        $ruleobject->ruledata = json_decode($ruledraft->ruledata);
+
+        // Setup event name if provided explicitly or from ruledata if provided.
+        if (!empty($ruledraft->eventname)) {
+            $record->eventname = $ruledraft->eventname;
+        } else if (!empty($ruleobject->ruledata->boevent)) {
+            $record->eventname = $ruleobject->ruledata->boevent;
+        }
+
+        $record->rulejson = json_encode($ruleobject);
+
+        $record->id = $DB->insert_record('booking_rules', $record);
 
         return $record;
     }

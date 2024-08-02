@@ -24,6 +24,8 @@
  */
 
 use mod_booking\booking_option;
+use mod_booking\booking_rules\booking_rule;
+use mod_booking\booking_rules\booking_rules;
 use mod_booking\booking_rules\rules_info;
 use mod_booking\calendar;
 use mod_booking\elective;
@@ -217,12 +219,6 @@ class mod_booking_observer {
                 // Create or update the sessions.
                 option_optiondate_update_event($optionid, $optiondate, $cmid);
             }
-        } else { // This means that there are no multisessions.
-            // This is for the course event.
-            new calendar($event->contextinstanceid, $optionid, 0, calendar::MOD_BOOKING_TYPEOPTION);
-
-            // This is for the user events.
-            option_optiondate_update_event($optionid, null, $cmid);
         }
 
         $allteachers = $DB->get_fieldset_select('booking_teachers', 'userid', 'optionid = :optionid AND calendarid > 0',
@@ -312,7 +308,11 @@ class mod_booking_observer {
                 WHERE md.name = 'booking' AND cm.instance = ?", [$value->bookingid]
             );
 
-            new calendar($tmpcmid->id, $value->id, 0, calendar::MOD_BOOKING_TYPEOPTION);
+            // There are no calendar entries for whole booking options anymore. Only for optiondates!
+            // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
+            /* new calendar($tmpcmid->id, $value->id, 0, calendar::MOD_BOOKING_TYPEOPTION); */
+
+            // TODO: We have to re-write this function so all calendar entries of optiondates will get updated correctly.
 
             $allteachers = $DB->get_records_sql("SELECT userid FROM {booking_teachers} WHERE optionid = ? AND calendarid > 0",
                 [$value->id]);
@@ -361,12 +361,10 @@ class mod_booking_observer {
     /**
      * This is triggered on any event. Depending on the rule, the execution is triggered.
      *
-     * @param mixed $event
+     * @param \core\event\base $event
      * @return void
      */
-    public static function execute_rule($event) {
-
-        global $DB;
+    public static function execute_rule(\core\event\base $event) {
 
         // We want booking events only.
         $data = $event->get_data();
@@ -375,11 +373,11 @@ class mod_booking_observer {
         }
 
         // TODO: Get name of event and only trigger when the rule is set to listen on this specific event.
-
         $optionid = $event->objectid ?? 0;
+        $eventname = "\\" . get_class($event);
 
-        // We retrieve all the event based booking rules.
-        $records = $DB->get_records('booking_rules', ['rulename' => 'rule_react_on_event']);
+        $contextid = $event->contextid;
+        $records = booking_rules::get_list_of_saved_rules_by_context($contextid, $eventname);
 
         // Now we check all the existing rules.
         foreach ($records as $record) {
@@ -388,18 +386,28 @@ class mod_booking_observer {
 
             // THIS is the place where we need to add event data to the rulejson!
             $ruleobj = json_decode($record->rulejson);
+            if (empty($ruleobj->datafromevent)) {
+                $ruleobj->datafromevent = new stdClass;
+                $ruleobj->datafromevent->eventdescription = $event->get_description() ?? "";
+            }
 
             if (!empty($event->userid)) {
-                if (empty($ruleobj->datafromevent)) {
-                    $ruleobj->datafromevent = new stdClass;
-                }
+                // Will be usually the logged-in USER.
                 $ruleobj->datafromevent->userid = $event->userid;
             }
             if (!empty($event->relateduserid)) {
                 if (empty($ruleobj->datafromevent)) {
                     $ruleobj->datafromevent = new stdClass;
                 }
+                // The user affected by the event.
                 $ruleobj->datafromevent->relateduserid = $event->relateduserid;
+            }
+            if (!empty($event->other)) {
+                if (empty($ruleobj->datafromevent)) {
+                    $ruleobj->datafromevent = new stdClass;
+                }
+                // Everything else from event can be passed via "other" array.
+                $ruleobj->datafromevent->other = $event->other;
             }
             // We save rulejson again with added event data.
             $record->rulejson = json_encode($ruleobj);

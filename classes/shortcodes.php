@@ -65,7 +65,7 @@ class shortcodes {
             || !is_int((int)$args['perpage'])
             || !$perpage = ($args['perpage'])
         ) {
-            $perpage = 1000;
+            $perpage = 100;
         }
 
         $pageurl = $course->shortname . $PAGE->url->out();
@@ -95,6 +95,7 @@ class shortcodes {
         $possibleoptions = [
             "description",
             "statusdescription",
+            "attachment",
             "teacher",
             "responsiblecontact",
             "showdates",
@@ -176,7 +177,7 @@ class shortcodes {
             || !is_int((int)$args['perpage'])
             || !$perpage = ($args['perpage'])
         ) {
-            $perpage = 1000;
+            $perpage = 100;
         }
 
         // First: determine the cohort we want to use.
@@ -229,6 +230,7 @@ class shortcodes {
         $possibleoptions = [
             "description",
             "statusdescription",
+            "attachment",
             "teacher",
             "responsiblecontact",
             "showdates",
@@ -293,7 +295,7 @@ class shortcodes {
             || !is_int((int)$args['perpage'])
             || !$perpage = ($args['perpage'])
         ) {
-            $perpage = 1000;
+            $perpage = 100;
         }
 
         // First: determine the cohort we want to use.
@@ -343,6 +345,7 @@ class shortcodes {
         $possibleoptions = [
             "description",
             "statusdescription",
+            "attachment",
             "teacher",
             "responsiblecontact",
             "showdates",

@@ -31,6 +31,7 @@ use mod_booking\booking_option_settings;
 use mod_booking\output\optiondates_only;
 use mod_booking\output\bookingoption_changes;
 use mod_booking\output\renderer;
+use mod_booking\placeholders\placeholders_info;
 use mod_booking\task\send_confirmation_mails;
 
 require_once($CFG->dirroot.'/user/profile/lib.php');
@@ -96,11 +97,17 @@ class message_controller {
     /** @var stdClass $params email params */
     private $params;
 
+    /** @var stdClass $params for strings */
+    private $stringparams;
+
     /** @var string $customsubject for custom messages */
     private $customsubject;
 
     /** @var string $custommessage for custom messages */
     private $custommessage;
+
+    /** @var int $descriptionparam param to render booking option description for mails, websites etc. */
+    private $descriptionparam;
 
     /**
      * Constructor
@@ -166,6 +173,7 @@ class message_controller {
         $this->userid = $userid;
         $this->optiondateid = $optiondateid;
         $this->changes = $changes;
+        $this->params = new stdClass();
 
         // For custom messages only.
         if ($this->messageparam == MOD_BOOKING_MSGPARAM_CUSTOM_MESSAGE) {
@@ -186,50 +194,30 @@ class message_controller {
             $this->user = singleton_service::get_instance_of_user($userid);
         }
 
-        // Generate e-mail placeholder params.
-        $this->params = booking_option::get_placeholder_params($optionid, $userid);
-
-        // Now we add e-mail specific params.
-        switch ($this->msgcontrparam) {
-            case MOD_BOOKING_MSGCONTRPARAM_SEND_NOW:
-            case MOD_BOOKING_MSGCONTRPARAM_QUEUE_ADHOC:
-                // We overwrite {bookingdetails} here, so we have a description for e-mails (website description is default).
-                // Add placeholder {bookingdetails} so we can add the detailed option description (similar to calendar, modal...
-                // ... and ical) to mails.
-                $this->params->bookingdetails = get_rendered_eventdescription($optionid, $cmid, MOD_BOOKING_DESCRIPTION_MAIL);
-                break;
-            case MOD_BOOKING_MSGCONTRPARAM_VIEW_CONFIRMATION:
-                // For viewconfirmation.php.
-                $this->params->bookingdetails = get_rendered_eventdescription($optionid, $cmid, MOD_BOOKING_DESCRIPTION_WEBSITE);
-                break;
-            case MOD_BOOKING_MSGCONTRPARAM_DO_NOT_SEND:
-            default:
-                break;
-        }
-
-        // Params for session reminders.
+        // We need these for some strings!
+        $this->stringparams = new stdClass();
+        $this->stringparams->title = $settings->get_title_with_prefix();
+        $this->stringparams->participant = $this->user->firstname . " " . $this->user->lastname;
+        // Param sessiondescription is only needed for session reminders.
+        // It's used as string param {$a->sessionreminder} in the default message string 'sessionremindermailmessage'.
         if ($this->messageparam == MOD_BOOKING_MSGPARAM_SESSIONREMINDER) {
-            // For session reminders we only have ONE session.
-            $sessions = [];
-            foreach ($settings->sessions as $session) {
-                if (!empty($session->optiondateid) && !empty($this->optiondateid)) {
-                    if ($session->optiondateid == $this->optiondateid) {
-                        $sessions[] = $session;
-                    }
-                }
-            }
-            // Render optiontimes using a template.
-            $data = new optiondates_only($settings);
-            $this->params->dates = $output->render_optiondates_only($data);
             // Rendered session description.
-            $this->params->sessiondescription = get_rendered_eventdescription(
+            $this->stringparams->sessiondescription = get_rendered_eventdescription(
                 $this->optionid, $this->cmid,
                 MOD_BOOKING_DESCRIPTION_CALENDAR);
+        }
 
-        } else {
-            // Render optiontimes using a template.
-            $data = new optiondates_only($settings);
-            $this->params->dates = $output->render_optiondates_only($data);
+        // Set the correct description param.
+        switch ($msgcontrparam) {
+            case MOD_BOOKING_MSGCONTRPARAM_SEND_NOW:
+            case MOD_BOOKING_MSGCONTRPARAM_QUEUE_ADHOC:
+                // For display in e-mails.
+                $this->descriptionparam = MOD_BOOKING_DESCRIPTION_MAIL;
+                break;
+            default:
+                // For display on website.
+                $this->descriptionparam = MOD_BOOKING_DESCRIPTION_WEBSITE;
+                break;
         }
 
         // If there are changes, let's render them.
@@ -237,30 +225,6 @@ class message_controller {
         if (!empty($changes)) {
             $data = new bookingoption_changes($changes, $cmid);
             $this->params->changes = $output->render_bookingoption_changes($data);
-        }
-
-        // Add a param for the user profile picture so we can show it in e-mails.
-        if ($usercontext = context_user::instance($userid, IGNORE_MISSING)) {
-            $fs = get_file_storage();
-            $files = $fs->get_area_files($usercontext->id, 'user', 'icon');
-            $picturefile = null;
-            foreach ($files as $file) {
-                $filenamewithoutextension = explode('.', $file->get_filename())[0];
-                if ($filenamewithoutextension === 'f1') {
-                    $picturefile = $file;
-                    // We found it, so break the loop.
-                    break;
-                }
-            }
-            if ($picturefile) {
-                // Retrieve the image contents and encode them as base64.
-                $picturedata = $picturefile->get_content();
-                $picturebase64 = base64_encode($picturedata);
-                // Now load the HTML of the image into the profilepicture param.
-                $this->params->profilepicture = '<img src="data:image/image;base64,' . $picturebase64 . '" />';
-            } else {
-                $this->params->profilepicture = '';
-            }
         }
 
         // Generate the email body.
@@ -306,16 +270,21 @@ class message_controller {
             $text = $this->bookingsettings->{$this->messagefieldname};
         } else {
             // Use default message if none is specified.
-            $text = get_string($this->messagefieldname . 'message', 'booking', $this->params);
+            $text = get_string($this->messagefieldname . 'message', 'booking', $this->stringparams);
         }
 
-        // Replace the placeholders.
+        // NOTE: The only param that has not yet been migrated is {changes}.
+        // So we  still have to keep this.
         foreach ($this->params as $name => $value) {
             if (!is_null($value)) { // Since php 8.1.
                 $value = strval($value);
                 $text = str_replace('{' . $name . '}', $value, $text);
             }
         }
+
+        // We apply the default placeholders.
+        $text = placeholders_info::render_text($text, $this->optionsettings->cmid, $this->optionid, $this->userid,
+            $this->descriptionparam ?? MOD_BOOKING_DESCRIPTION_WEBSITE);
 
         return $text;
     }
@@ -344,7 +313,7 @@ class message_controller {
             $messagedata->subject = $this->customsubject;
         } else {
             // Else use the localized lang string for the correspondent message type.
-            $messagedata->subject = get_string($this->messagefieldname . 'subject', 'booking', $this->params);
+            $messagedata->subject = get_string($this->messagefieldname . 'subject', 'booking', $this->stringparams);
         }
 
         $messagedata->fullmessage = strip_tags(preg_replace('#<br\s*?/?>#i', "\n", $this->messagebody));
@@ -382,7 +351,7 @@ class message_controller {
             $messagedata->subject = $this->customsubject;
         } else {
             // Else use the localized lang string for the correspondent message type.
-            $messagedata->subject = get_string($this->messagefieldname . 'subject', 'booking', $this->params);
+            $messagedata->subject = get_string($this->messagefieldname . 'subject', 'booking', $this->stringparams);
         }
 
         $messagedata->messagetext = format_text_email($this->messagebody, FORMAT_HTML);
@@ -493,7 +462,7 @@ class message_controller {
                 if ($this->messageparam == MOD_BOOKING_MSGPARAM_CONFIRMATION ||
                     $this->messageparam == MOD_BOOKING_MSGPARAM_WAITINGLIST) {
                     $this->messagedata->subject = get_string($this->messagefieldname . 'subjectbookingmanager',
-                        'mod_booking', $this->params);
+                        'mod_booking', $this->stringparams);
                 }
 
                 $sendtask = new send_confirmation_mails();
@@ -544,16 +513,6 @@ class message_controller {
     public function get_messagebody(): string {
 
         return $this->messagebody;
-
-    }
-
-    /**
-     * Public getter function for the email params.
-     * @return stdClass email params
-     */
-    public function get_params(): stdClass {
-
-        return $this->params;
 
     }
 

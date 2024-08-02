@@ -183,7 +183,8 @@ class editteachersforoptiondate_form extends \core_form\dynamic_form {
         // Save deductions if there are any.
         $settings = singleton_service::get_instance_of_booking_option_settings($data->optionid);
         foreach ($settings->teachers as $teacher) {
-            if ($data->{'deduction-teacherid-' . $teacher->userid} == 1 &&
+            if (isset($data->{'deduction-teacherid-' . $teacher->userid})
+                && $data->{'deduction-teacherid-' . $teacher->userid} == 1 &&
                 !empty($data->{'deductionreason-teacherid-' . $teacher->userid})) {
 
                 if ($existingdeductionrecord = $DB->get_record('booking_odt_deductions', [
@@ -210,7 +211,8 @@ class editteachersforoptiondate_form extends \core_form\dynamic_form {
                     // Important: Purge cache here!
                     cache_helper::purge_by_event('setbackcachedteachersjournal');
                 }
-            } else if ($data->{'deduction-teacherid-' . $teacher->userid} == 0 &&
+            } else if (isset($data->{'deduction-teacherid-' . $teacher->userid})
+                && $data->{'deduction-teacherid-' . $teacher->userid} == 0 &&
                 ($existingdeductionrecord = $DB->get_record('booking_odt_deductions', [
                 'optiondateid' => $data->optiondateid,
                 'userid' => $teacher->userid,
@@ -284,6 +286,9 @@ class editteachersforoptiondate_form extends \core_form\dynamic_form {
             'ajax' => 'mod_booking/form_users_selector',
             'valuehtmlcallback' => function($value) {
                 global $OUTPUT;
+                if (empty($value)) {
+                    return get_string('choose...', 'mod_booking');
+                }
                 $user = singleton_service::get_instance_of_user((int)$value);
                 $details = [
                     'id' => $user->id,
@@ -368,7 +373,8 @@ class editteachersforoptiondate_form extends \core_form\dynamic_form {
 
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
         foreach ($settings->teachers as $teacher) {
-            if ($data['deduction-teacherid-' . $teacher->userid] == 1) {
+            if (isset($data['deduction-teacherid-' . $teacher->userid])
+                && $data['deduction-teacherid-' . $teacher->userid] == 1) {
                 if (empty(trim($data['deductionreason-teacherid-' . $teacher->userid]))) {
                     $errors['deductionreason-teacherid-' . $teacher->userid] =
                         get_string('error:reasonfordeduction', 'mod_booking');

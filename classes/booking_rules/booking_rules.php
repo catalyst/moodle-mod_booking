@@ -25,7 +25,12 @@
 
 namespace mod_booking\booking_rules;
 
+use coding_exception;
+use context;
+use context_module;
+use dml_exception;
 use mod_booking\output\ruleslist;
+use mod_booking\singleton_service;
 
 /**
  * Class to handle display and management of rules.
@@ -37,40 +42,89 @@ use mod_booking\output\ruleslist;
 class booking_rules {
 
     /** @var array $rules */
-    public $rules = [];
+    public static $rules = [];
 
     /**
      * Returns the rendered html for a list of rules.
      *
-     * @param int $bookingid
+     * @param int $contextid
      * @return string
      */
-    public static function return_rendered_list_of_saved_rules($bookingid = 0) {
+    public static function get_rendered_list_of_saved_rules($contextid = 1) {
         global $PAGE;
 
-        $rules = self::get_list_of_saved_rules($bookingid);
-
-        $data = new ruleslist($rules);
+        $rules = self::get_list_of_saved_rules($contextid);
+        $data = new ruleslist($rules, $contextid);
         $output = $PAGE->get_renderer('booking');
         return $output->render_ruleslist($data);
     }
 
     /**
-     * Returns the rendered html for a list of rules for an instance or globally.
-     *
-     * @param int $bookingid
-     * @return array
+     * Returns the saved rules for the right context.
+     * @param int $contextid
+     * @return mixed
+     * @throws coding_exception
+     * @throws dml_exception
      */
-    private static function get_list_of_saved_rules($bookingid = 0): array {
+    private static function get_list_of_saved_rules(int $contextid = 0) {
+
         global $DB;
 
-        // If the bookingid is 0, we are dealing with global rules.
-        $params = ['bookingid' => $bookingid];
-
-        if (!$rules = $DB->get_records('booking_rules', $params)) {
-            $rules = [];
+        if (empty(self::$rules)) {
+            $rules = $DB->get_records('booking_rules');
+            self::$rules = $rules;
         }
 
-        return $rules;
+        if (empty($contextid)) {
+            return self::$rules;
+        }
+        return array_filter(self::$rules, fn($a) => $a->contextid == $contextid);
+    }
+
+    /**
+     * Get list of saved rules by optionid.
+     * @param int $optionid
+     * @param string $eventname
+     * @return mixed
+     * @throws coding_exception
+     * @throws dml_exception
+     */
+    public static function get_list_of_saved_rules_by_optionid(int $optionid, $eventname = '') {
+        if (!empty($optionid)) {
+            $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+            if (!empty($settings->cmid)) {
+                $context = context_module::instance($settings->cmid);
+                return self::get_list_of_saved_rules_by_context($context->id, $eventname);
+            }
+        }
+        return self::get_list_of_saved_rules_by_context(1, $eventname);
+    }
+
+    /**
+     * Returns the saved rules for the right context.
+     * @param int $contextid
+     * @param string $eventname
+     * @return array
+     * @throws coding_exception
+     * @throws dml_exception
+     */
+    public static function get_list_of_saved_rules_by_context(int $contextid = 1, string $eventname = '') {
+
+        $context = context::instance_by_id($contextid);
+        $path = $context->path;
+
+        $patharray = explode('/', $path);
+
+        $patharray = array_map(fn($a) => (int)$a, $patharray);
+
+        // We get all rules, because we don't want one context, but the context path.
+        $rules = self::get_list_of_saved_rules(0);
+
+        if (empty($eventname)) {
+            return array_filter($rules, fn($a) => in_array($a->contextid, $patharray));
+        } else {
+            return array_filter($rules,
+                fn($a) => (in_array($a->contextid, $patharray) && ($a->eventname == $eventname)));
+        }
     }
 }

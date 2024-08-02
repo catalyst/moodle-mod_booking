@@ -139,6 +139,13 @@ $functions = [
         'capabilities' => '',
         'ajax' => 1,
     ],
+    'mod_booking_search_courses' => [
+        'classname' => 'mod_booking\external\search_courses',
+        'description' => 'Search a list of courses',
+        'type' => 'read',
+        'capabilities' => '',
+        'ajax' => 1,
+    ],
     'mod_booking_allow_add_item_to_cart' => [
         'classname' => 'mod_booking\external\allow_add_item_to_cart',
         'description' => 'Check if item can be added to cart',
@@ -148,6 +155,20 @@ $functions = [
     ],
     'mod_booking_get_option_field_config' => [
         'classname' => 'mod_booking\external\get_option_field_config',
+        'description' => 'Returns all possible configurable fields of option form',
+        'type' => 'read',
+        'capabilities' => '',
+        'ajax' => 1,
+    ],
+    'mod_booking_get_parent_categories' => [
+        'classname' => 'mod_booking\external\get_parent_categories',
+        'description' => 'Returns all possible configurable fields of option form',
+        'type' => 'read',
+        'capabilities' => '',
+        'ajax' => 1,
+    ],
+    'mod_booking_set_parent_content' => [
+        'classname' => 'mod_booking\external\save_option_field_config',
         'description' => 'Returns all possible configurable fields of option form',
         'type' => 'read',
         'capabilities' => '',

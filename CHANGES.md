@@ -1,3 +1,187 @@
+## Version 8.2.4 (2024041100)
+* Improvement: Migrate placeholders in message controller to new placeholder classes.
+* Improvement: Separate string params from placeholder param {changes}.
+* Bugfix: Profile picture is destroyed by format_text so do not use it in placeholders_info but only directly where we need it.
+* Bugfix: Try to fix strings for AMOS.
+* Bugfix: Add missing !empty check for datafromevent property.
+
+## Version 8.2.3 (2024041000)
+* New feature: Show attachments right within booking options.
+* New feature: New setting to also duplicate Moodle course when a booking option gets duplicated.
+* New feature: Send copies of mails for custom messages or for bulk custom messages via booking rules.
+* New feature: Context-based booking rules (e.g. rules for a specific Booking instance).
+* Improvement: New event custom_message_sent.
+* Improvement: New booking rule action send_copy_of_mail.
+* Improvement: Allow search for ID without pattern matching. (Will also work with numeric last names in behat tests.)
+* Improvement: Allow search for full course id and booking option id in autocompletes.
+* Improvement: Purge bookingoptionstable cache when encodedtables are purged.
+* Improvement: New send_copy_of_mail action will only be shown for compatible events.
+* Improvement: Fix eventlog to better reflect booking of other users.
+* Improvement: Allow waitinglist for paid options.
+* Improvement: Get rid of outdated shorturl field.
+* Improvement: Several improvements and fixes for the new placeholders.
+* Improvement: Possibility to confirm users which are on waitinglist with price.
+* Improvement: Show hint for new placeholder {eventdescription} and show optionid in event description.
+* Bugfix: Some small bugs in editteachersforoptiondate form.
+* Bugfix: Report.php (user bookings page) cannot use the same pagination value that is used for Booking view - fixes #439.
+* Bugfix: Possible bugfix for strange nullpointer bug on name property of module.
+* Bugfix: Avoid error if class does not exist in fields_info.php.
+* Bugfix: Bugfixes for waitinglist with price.
+* Bugfix: Nullpointer bug in notifymelist.
+* Bugfix: Fix Exception - Warning: Undefined array key "freeonwaitinglist".
+* Bugfix: Fix is_available of fullybooked.php.
+
+## Version 8.2.2 (2024040200)
+* New feature: New setting to allow responsible contacts to edit booking options.
+* Improvement: Issue #407 blocks booking via moodle capability
+* Improvement: Add cancel for bought items.
+* Improvement: Allow Filter a users bookingoption for more than one booking status param
+* Improvement: Better way to check for price.
+* Improvement: Apply rules again after every time a user has booked (only for option & userid).
+* Improvement: Make bookit button accessible via TAB - fixes #436.
+* Bugfix: Cancel myself not shown on reserved items.
+* Bugfix: Description is actually a necessary field
+* Bugfix: Several fixes for missing cmid in formdata when creating context_module.
+* Bugfix: Add missing empty check for capability string identifier.
+* Bugfix: Fix some minor errors in subbookings - fixes #356.
+* Bugfix: Debug Booking rules.
+* Bugfix: Fix error "ERROR:  column u.userid does not exist" which affects booking rules #445.
+* Bugfix: Fix CSV import for entities.
+* Bugfix: In confirmcancel we need to check useprice from JSON. (Price item check is legacy.)
+* Bugfix: Switch from counting priceitems to just check useprice.
+
+## Version 8.2.1 (2024032700)
+* Improvement: Show which form currently overrides the standard form definition on edit.
+* Improvement: Usability improvements for option form config with and without PRO license.
+* Improvement: Allow csv import with column username.
+* Improvement: Add capability to edit option form config (mod/booking:editoptionformconfig).
+* Improvement: Add more rights to manager role (manager should have the same rights as enrolled teacher).
+* Bugfix: Add enrolmentstatus field again.
+* Test: New behat tests for Booking rules.
+
+## Version 8.2.0 (2024032500)
+* New feature: Config Dashboard implementation.
+* New feature: Add manually managed waitinglist.
+* Improvement: New Webservice to save config forms - unfinished.
+* Improvement: Adjust incompatibilities of option form fields.
+* Improvement: Better treatment auf where array values.
+* Improvement: Support for new configurable Wunderbyte Table filters.
+* Improvement: Move to contextids instead of coursecategoryids.
+* Improvement: Use capabilities to adjust option form.
+* Improvement: Get rid of old expertform mode.
+* Improvement: Issue #407 blocks booking via moodle capability.
+* Improvement: Make config sortable & add delete functionality.
+* Improvement: Add possibility to turn off single customfields.
+* Improvement: Use new WB Table functionality for using filters.
+* Improvement: Add optionformconfig to context 1 (systemwide).
+* Improvement: Allow cachier to book users from waitinglist, if it's a "confirm waitinglist" setting.
+* Improvement: New booked users information with wb table.
+* Improvement: More efficient handling of actions.
+* Improvement: Show booked users only if there are some.
+* Improvement: Add edit component to tables.
+* Improvement: New setting for Booking debug mode.
+* Improvement: Add debug event for send_mail_by_rule_adhoc.
+* Improvement: New language strings.
+* Bugfix: Fix deprecation warning for usort.
+* Bugfix: Make sure html tags won't destroy the functionality.
+* Bugfix: Implement new WB Table API.
+* Bugfix: Drag & drop only for waitinglist.
+* Bugfix: Fix errors in datepickers.
+* Bugfix: Crucial Bugfix for booking process.
+* Bugfix: Fix askforconfirmation booking button.
+* Bugfix: Confusion between optionid & id.
+* Bugfix: Fix option config form.
+* Bugfix: Add missing cache definitions.
+* Bugfix: Fix #447.
+* Bugfix: Don't try to create event if optiondatesid is 0.
+* Bugfix: Only access waitforconfirmation if it is set.
+
+## Version 8.1.40 (2024031801)
+* Bugfix: If shoppingcarthistory already has a canceluntil date set it may not be overriden by the option's canceluntil date again!
+
+## Version 8.1.39 (2024031800)
+* Improvement: Make save and cancel buttons in edit forms sticky at bottom.
+
+## Version 8.1.38 (2024031400)
+* Improvement: Accelerate view page via lazy loading.
+* Improvement: Meeting link buttons should have secondary color.
+* Bugfix: Service period currently always needs to be courseendtime.
+* Bugfix: Accelerate slow teacher page.
+* Bugfix: don't render all tables to show teacher page.
+
+## Version 8.1.37 (2024031300)
+* Bugfix: Fix privacy provider.
+* Bugfix: Fix special fields for optiondates (Teams meeting, Zoom meeting...).
+* Improvement: Several improvements for sign-in sheet, including better display of e-mail addresses and line breaks for too long titles.
+* Improvement: Better debugging for errors with availability json.
+* Improvement: Setting to not count users with presence status "no show" for max. number of bookings per instance.
+
+## Version 8.1.36 (2024031200)
+* Improvement: New settings for max. per user and improvements to general settings.
+* Tests: New phpunit tests for reminder mails and teacher reminders.
+
+## Version 8.1.35 (2024031100)
+* Bugfix: No need to destroy singleton when creating new booking instances.
+* Bugfix: Add missing strings (assesstimestart, assesstimefinish).
+
+## Version 8.1.34 (2024030801)
+* Improvement: Only use cached data for enrolled in course check.
+* Improvement: Make sure calendar events are always stored as optiondates.
+* Improvement: Get rid of old form modes (toggle between simple and expert form).
+* Improvement: New function to purge all booking instance caches and destroy booking instance singleton.
+* Bugfix: Make sure institution stores only empty strings.
+* Bugfix: Fix bugs with showlistoncoursepage field.
+
+## Version 8.1.33 (2024030700)
+* Improvement: Add possibility to format personal messages with HTML editor.
+* Improvement: Make sure images in cards view always have the same height of 220px.
+
+## Version 8.1.32 (2024030601)
+* Improvement: Layout fix for cards.
+* Improvement: Show "Choose..." string in autocompletes if value is missing.
+
+## Version 8.1.31 (2024030500)
+* New feature: New placeholder classes for better performance and maintainability.
+* New feature: Show full entity name of each optiondate in optionview (booking option description).
+* New feature: New setting for sync_waiting_list to keep users booked when reducing limits.
+* Improvement: Import now works with "startdate" & "enddate" keys.
+* Improvement: Inline modals (turn off modals functionality) will only work with list view.
+With cards view, we always have modals.
+* Improvement: Apply waitinglist on increasing maxanswers for booking option
+* Improvement: Add string that modals cannot be turned off for new cards view.
+* Improvement: When purging caches for option we also need to destroy singletons for booking option settings.
+* Improvement: Show teachers emails to booked users only (with config setting).
+* Improvement: Better strings.
+* Bugfix: Add to Calendar needed to be in postsave mode.
+* Bugfix: Set importing on true when noticing an import.
+* Bugfix: Default boavenrolledincourse during import to OR, not AND, support for boavenrolledincourseoperator (Values OR, AND).
+* Bugfix: Don't call add to calendar on template.
+* Bugfix: Add isset check for addtocalendar.
+* Bugfix: Don't block booking options without price with prepages.
+* Bugfix: Destroy all instances of booking options when calling destroy_booking_option_singleton.
+* Bugfix: Make sure we use correct context when creating booking option sql.
+* Bugfix: Wrong settings were used on report.php.
+* Bugfix: Use context_system if context_module can't be found (eg for template).
+* Testing: Temporarily take out failing behat test - to be reintroduced.
+
+## Version 8.1.30 (2024030400)
+* Bugfix: Several fixes for indexes and foreign keys.
+
+## Version 8.1.29 (2024030100)
+* Bugfix: Fix for leap year bug.
+* Bugfix: Pre- and Post-page conditions like "Bookingpolicy" should not block "allow_add_item_to_cart".
+* Bugfix: Fix download.php of Booking view.
+
+## Version 8.1.28 (2024022900)
+* New feature: You may now switch between list and cards layout in Booking instance settings.
+* Improvement: Change tab order an make all booking options tab the default.
+* Improvement: showall should be the default tab - also in install.xml.
+* Bugfix: Make sure menubar is always at correct position using CSS.
+* Bugfix: We always want to see institution - regardless if entitity manager is installed or not.
+
+## Version 8.1.27 (2024022800)
+* Improvement: Better layout for new menu bar (we cannot show it at the top right, as this would lead to several layouting problems).
+
 ## Version 8.1.26 (2024022701)
 * Improvement: In Booking, we show the edit button at the top right.
 * New feature: New pencil button to directly edit booking options.

@@ -97,6 +97,9 @@ class select_users implements booking_rule_condition {
             'noselectionstring' => get_string('choose...', 'mod_booking'),
             'valuehtmlcallback' => function($value) {
                 global $OUTPUT;
+                if (empty($value)) {
+                    return get_string('choose...', 'mod_booking');
+                }
                 $user = singleton_service::get_instance_of_user((int)$value);
                 $details = [
                     'id' => $user->id,
@@ -172,7 +175,8 @@ class select_users implements booking_rule_condition {
 
         // We need the hack with uniqueid so we do not lose entries ...as the first column needs to be unique.
 
-        $sql->select = " CONCAT(bo.id, '-', u.id) uniqueid, " . $sql->select;
+        $concat = $DB->sql_concat("bo.id", "'-'", "u.id");
+        $sql->select = " $concat uniqueid, " . $sql->select;
         $sql->select .= ", u.id userid";
 
         $sql->from .= " JOIN {user} u ON 1 = 1 "; // We want to join all users here.

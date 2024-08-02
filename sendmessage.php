@@ -26,7 +26,10 @@ require_once(__DIR__ . '/../../config.php');
 require_once("lib.php");
 require_once("sendmessageform.class.php");
 
+use mod_booking\event\custom_bulk_message_sent;
+use mod_booking\event\custom_message_sent;
 use mod_booking\message_controller;
+use mod_booking\singleton_service;
 
 $id = required_param('id', PARAM_INT);
 $optionid = required_param('optionid', PARAM_INT);
@@ -69,7 +72,7 @@ if ($mform->is_cancelled()) {
     $cleanuids = clean_param_array(json_decode($uids), PARAM_INT);
 
     // Now, let's send the custom message.
-    send_custom_message($optionid, $data->subject, $data->message, $cleanuids);
+    send_custom_message($optionid, $data->subject, $data->message['text'], $cleanuids);
 
     redirect($redirecturl, get_string('messagesend', 'booking'), 5);
 }
@@ -87,24 +90,67 @@ echo $OUTPUT->footer();
 /**
  * Send a custom message to one or more users.
  *
+ * @package mod_booking
  * @param int $optionid
  * @param string $subject
  * @param string $message
  * @param array $selecteduserids
  */
 function send_custom_message(int $optionid, string $subject, string $message, array $selecteduserids) {
-    global $DB;
+    global $DB, $USER;
 
-    $option = $DB->get_record('booking_options', ['id' => $optionid]);
-    $booking = $DB->get_record('booking', ['id' => $option->bookingid]);
-    $cm = get_coursemodule_from_instance('booking', $booking->id);
+    $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+    $cmid = $settings->cmid;
+    $bookingid = $settings->bookingid;
 
     foreach ($selecteduserids as $currentuserid) {
 
         $messagecontroller = new message_controller(
-            MOD_BOOKING_MSGCONTRPARAM_SEND_NOW, MOD_BOOKING_MSGPARAM_CUSTOM_MESSAGE, $cm->id,
-            $option->bookingid, $optionid, $currentuserid, null, null, $subject, $message
+            MOD_BOOKING_MSGCONTRPARAM_SEND_NOW, MOD_BOOKING_MSGPARAM_CUSTOM_MESSAGE, $cmid,
+            $bookingid, $optionid, $currentuserid, null, null, $subject, $message
         );
         $messagecontroller->send_or_queue();
+
+        // Also trigger an event, so we can react with booking rules for example.
+        $event = custom_message_sent::create([
+            'context' => context_system::instance(),
+            'objectid' => $optionid,
+            'userid' => $USER->id,
+            'relateduserid' => $currentuserid,
+            'other' => [
+                'cmid' => $cmid,
+                'optionid' => $optionid,
+                'bookingid' => $bookingid,
+                'subject' => $subject,
+                'message' => $message,
+            ],
+        ]);
+        $event->trigger();
     }
+
+    // Check, if a bulk message has been sent.
+    $answers = singleton_service::get_instance_of_booking_answers($settings);
+    $bookedusers = $answers->usersonlist;
+    if (!empty($selecteduserids) && !empty($bookedusers)) {
+        $countselected = count($selecteduserids);
+        $countbooked = count($bookedusers);
+        // It's been considered as a bulk message, if it goes to at least 75% of booked users (and more than 3 users).
+        if ($countselected >= 3 && ($countselected / $countbooked) >= 0.75) {
+            $event = custom_bulk_message_sent::create([
+                'context' => context_system::instance(),
+                'objectid' => $optionid,
+                'userid' => $USER->id,
+                'relateduserid' => 0, // Bulk message, so no related single user.
+                'other' => [
+                    'cmid' => $cmid,
+                    'optionid' => $optionid,
+                    'bookingid' => $bookingid,
+                    'subject' => $subject,
+                    'message' => $message,
+                ],
+            ]);
+            $event->trigger();
+        }
+    }
+
 }
