@@ -15,6 +15,8 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 namespace mod_booking\form;
+use context_module;
+use mod_booking\singleton_service;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -25,8 +27,6 @@ use context_system;
 use core_form\dynamic_form;
 use mod_booking\booking_rules\rules_info;
 use moodle_url;
-use moodleform;
-use MoodleQuickForm;
 
 /**
  * Dynamic rules form.
@@ -51,7 +51,8 @@ class rulesform extends dynamic_form {
         // If we open an existing rule, we need to save the id right away.
         if (!empty($ajaxformdata['id'])) {
             $mform->addElement('hidden', 'id', $ajaxformdata['id']);
-
+            $this->prepare_ajaxformdata($ajaxformdata);
+        } else if (!empty($ajaxformdata['btn_bookingruletemplates'])) {
             $this->prepare_ajaxformdata($ajaxformdata);
         }
 
@@ -81,16 +82,24 @@ class rulesform extends dynamic_form {
      * @return void
      */
     public function set_data_for_dynamic_submission(): void {
-
-        if (!empty($this->_ajaxformdata['id'])) {
+        if (!empty($this->_ajaxformdata['btn_bookingruletemplates'])) {
+            $tempdata = (object)[
+                'id' => $this->_ajaxformdata['bookingruletemplate'] ?? 0,
+                'contextid' => $this->_ajaxformdata['contextid'] ?? 0,
+                'btn_bookingruletemplates' => 1,
+                'bookingruletemplate' => $this->_ajaxformdata['bookingruletemplate'] ?? 0,
+            ];
+            $data = rules_info::set_data_for_form($tempdata);
+            $data->id = $this->_ajaxformdata['id'];
+            $data->contextid = $this->_ajaxformdata['contextid'];
+        } else if (!empty($this->_ajaxformdata['id'])) {
             $data = (object)$this->_ajaxformdata;
             $data = rules_info::set_data_for_form($data);
         } else {
-            $data = (Object)$this->_ajaxformdata;
+            $data = (object)$this->_ajaxformdata;
         }
 
         $this->set_data($data);
-
     }
 
     /**
@@ -113,9 +122,6 @@ class rulesform extends dynamic_form {
                 $errors['bookingruletype'] = get_string('error:choosevalue', 'mod_booking');
                 break;
             case 'rule_daysbefore':
-                if ($data['rule_daysbefore_days'] == '0') {
-                    $errors['rule_daysbefore_days'] = get_string('error:choosevalue', 'mod_booking');
-                }
                 if ($data['rule_daysbefore_datefield'] == '0') {
                     $errors['rule_daysbefore_datefield'] = get_string('error:choosevalue', 'mod_booking');
                 }
@@ -187,6 +193,18 @@ class rulesform extends dynamic_form {
                 }
                 break;
         }
+        // Check if {#placeholder} is closed with a {/placeholder}.
+        if (isset($data['action_send_mail_template']['text'])) {
+            $text = $data['action_send_mail_template']['text'];
+            preg_match_all('/\{#(\w+)\}/', $text, $matches);
+
+            foreach ($matches[1] as $word) {
+                $endtag = '{/' . $word . '}';
+                if (strpos($text, $endtag) == false) {
+                    $errors['action_send_mail_template'] = get_string('error:noendtagfound', 'mod_booking', $word);
+                }
+            }
+        }
 
         return $errors;
     }
@@ -213,7 +231,15 @@ class rulesform extends dynamic_form {
      * @return void
      */
     protected function check_access_for_dynamic_submission(): void {
-        require_capability('moodle/site:config', context_system::instance());
+
+        $customdata = $this->_customdata;
+        $ajaxformdata = $this->_ajaxformdata;
+
+        $contextid = $ajaxformdata['contextid'] ?? $customdata['contextid'];
+
+        $context = context::instance_by_id($contextid);
+
+        require_capability('mod/booking:editbookingrules', $context);
     }
 
     /**
@@ -227,8 +253,19 @@ class rulesform extends dynamic_form {
 
         global $DB;
 
+        $id = $ajaxformdata['id'];
+        if (!empty($ajaxformdata['btn_bookingruletemplates'])) {
+            $id = $ajaxformdata['bookingruletemplate'];
+
+            $ajaxformdata = [
+              'id' => $id,
+              'contextid' => $ajaxformdata['contextid'],
+              'btn_bookingruletemplates' => 1,
+              'bookingruletemplate' => $id,
+            ];
+        }
         // If we have an ID, we retrieve the right rule from DB.
-        $record = $DB->get_record('booking_rules', ['id' => $ajaxformdata['id']]);
+        $record = $DB->get_record('booking_rules', ['id' => $id]);
 
         $jsonboject = json_decode($record->rulejson);
 
@@ -240,6 +277,46 @@ class rulesform extends dynamic_form {
         }
         if (empty($ajaxformdata['bookingruleactiontype'])) {
             $ajaxformdata['bookingruleactiontype'] = $jsonboject->actionname;
+        }
+        if (empty($ajaxformdata['isactive'])) {
+            $ajaxformdata['isactive'] = $record->isactive;
+        }
+    }
+
+    /**
+     * Definition after data.
+     * @return void
+     * @throws coding_exception
+     */
+    public function definition_after_data() {
+
+        $mform = $this->_form;
+        $formdata = $this->_customdata ?? $this->_ajaxformdata;
+
+        if (!empty($formdata->id)) {
+            return;
+        }
+
+        $values = $mform->_defaultValues;
+        $formdata = $values;
+
+        // If we have applied the change template value, we override all the values we have submitted.
+        if (!empty($formdata['btn_bookingruletemplates'])) {
+            foreach ($values as $k => $v) {
+
+                if ($mform->elementExists($k) && $v !== null) {
+
+                    if ($mform->elementExists($k) && $k != 'rule_name') {
+                        $element = $mform->getElement($k);
+
+                        if ($k == 'useastemplate') {
+                            $element->setValue(0);
+                        } else {
+                            $element->setValue($v);
+                        }
+                    }
+                }
+            }
         }
     }
 }

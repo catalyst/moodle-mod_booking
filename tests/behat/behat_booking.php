@@ -27,12 +27,13 @@ use Behat\Mink\Exception\UnsupportedDriverActionException;
 use Behat\Mink\Exception\DriverException;
 use mod_booking\booking;
 use mod_booking\singleton_service;
+use mod_booking\booking_rules\booking_rules;
+use mod_booking\booking_rules\rules_info;
 
 /**
  * To create booking specific behat scearios.
  */
 class behat_booking extends behat_base {
-
     /**
      * Create booking option in booking instance
      * @Given /^I create booking option "(?P<optionname_string>(?:[^"]|\\")*)" in "(?P<instancename_string>(?:[^"]|\\")*)"$/
@@ -44,7 +45,7 @@ class behat_booking extends behat_base {
 
         $cm = $this->get_cm_by_booking_name($instancename);
 
-        $booking = singleton_service::get_instance_of_booking_by_cmid($cm->id);
+        $booking = singleton_service::get_instance_of_booking_by_cmid((int)$cm->id);
 
         $record = new stdClass();
         $record->bookingid = $booking->id;
@@ -92,33 +93,47 @@ class behat_booking extends behat_base {
 
     /**
      * Fill specified HTMLQuickForm element by its number under given xpath with a value.
-     * @When /^I click on the element with the number "([^"]*)" with the dynamic identifier "([^"]*)"$/
+     * @When /^I click on the element with the number "([^"]*)" with the dynamic identifier "([^"]*)" and action "([^"]*)"$/
      * @param mixed $numberofitem
-     * @param mixed $tablecontaineridentifier
+     * @param mixed $containeridentifier
+     * @param mixed $actionidentifier
      * @return void
      * @throws RuntimeException
      * @throws InvalidArgumentException
      * @throws UnsupportedDriverActionException
      * @throws DriverException
      */
-    public function i_click_on_element($numberofitem, $tablecontaineridentifier) {
+    public function i_click_on_element($numberofitem, $containeridentifier, $actionidentifier) {
         // Use $dynamicIdentifier to locate and fill in the corresponding form field.
         // Use $value to set the desired value in the form field.
 
         // First we need to open all collapsibles.
         // We should probably have a single fuction for that.
-        $xpathtarget = "//tr[starts-with(@id, 'waitinglist')]//a[@data-methodname='confirmbooking']";
+        $xpathtarget = "//tr[starts-with(@id, '" . $containeridentifier . "')]//a[@data-methodname='" . $actionidentifier . "']";
         $fields = $this->getSession()->getPage()->findAll('xpath', $xpathtarget);
 
         $counter = 1;
         foreach ($fields as $field) {
-
             if ($counter == $numberofitem) {
-
                 $field->click();
-
             }
             $counter++;
         }
+    }
+
+    /**
+     * Clean bookig singleton cache
+     * @Given /^I clean booking cache$/
+     * @return void
+     */
+    public function i_clean_booking_cache() {
+            // Mandatory clean-up.
+            singleton_service::reset_campaigns();
+            singleton_service::get_instance()->users = [];
+            singleton_service::get_instance()->bookinganswers = [];
+            singleton_service::get_instance()->userpricecategory = [];
+            rules_info::$rulestoexecute = [];
+            booking_rules::$rules = [];
+            singleton_service::destroy_instance();
     }
 }

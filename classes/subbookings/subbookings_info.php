@@ -25,8 +25,12 @@
 
 namespace mod_booking\subbookings;
 
+use cache_helper;
 use context_module;
+use mod_booking\booking_option;
+use mod_booking\booking_option_settings;
 use mod_booking\output\subbookingslist;
+use mod_booking\singleton_service;
 use mod_booking\utils\wb_payment;
 use MoodleQuickForm;
 use stdClass;
@@ -39,7 +43,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class subbookings_info {
-
     /**
      * Add a list of subbookings and a modal to edit subbookings to an mform.
      *
@@ -47,21 +50,29 @@ class subbookings_info {
      * @param array $formdata
      * @return void
      */
-    public static function add_subbookings_to_mform(MoodleQuickForm &$mform,
-        array &$formdata = []) {
+    public static function add_subbookings_to_mform(
+        MoodleQuickForm &$mform,
+        array &$formdata = []
+    ) {
 
         if (get_config('booking', 'showsubbookings') && wb_payment::pro_version_is_activated()) {
             // Add header to Element.
-            $mform->addElement('header', 'bookingsubbookingsheader',
-            '<i class="fa fa-fw fa-sitemap" aria-hidden="true"></i>&nbsp;' . get_string('bookingsubbookingsheader', 'mod_booking'));
+            $mform->addElement(
+                'header',
+                'bookingsubbookingsheader',
+                '<i class="fa fa-fw fa-sitemap" aria-hidden="true"></i>&nbsp;'
+                    . get_string('bookingsubbookingsheader', 'mod_booking')
+            );
 
             if (!empty($formdata['optionid'])) {
                 // Add a list of existing subbookings, including an edit and a delete button.
                 self::add_list_of_existing_subbookings_for_this_option($mform, $formdata);
-
             } else {
-                $mform->addElement('static', 'onlyaddsubbookingsonsavedoption',
-                    get_string('onlyaddsubbookingsonsavedoption', 'mod_booking'));
+                $mform->addElement(
+                    'static',
+                    'onlyaddsubbookingsonsavedoption',
+                    get_string('onlyaddsubbookingsonsavedoption', 'mod_booking')
+                );
             }
         }
     }
@@ -77,6 +88,11 @@ class subbookings_info {
         $path = $CFG->dirroot . '/mod/booking/classes/subbookings/sb_types/*.php';
         $filelist = glob($path);
 
+        $supportedsubookingtypes = [
+            'subbooking_additionalperson',
+            'subbooking_additionalitem',
+        ];
+
         $subbookings = [];
 
         // We just want filenames, as they are also the classnames.
@@ -87,7 +103,9 @@ class subbookings_info {
             // NOTE: In the future we'll activate additional subbookings.
             // But right now, we ONLY use the additional person booking.
             // So we use the next 3 lines to skip anything else.
-            if ($path['filename'] !== 'subbooking_additionalperson') {
+            if (
+                !in_array($path['filename'], $supportedsubookingtypes)
+            ) {
                 continue;
             }
 
@@ -146,7 +164,6 @@ class subbookings_info {
         $subbooking->set_defaults($data, $record);
 
         return (object)$data;
-
     }
 
     /**
@@ -167,14 +184,8 @@ class subbookings_info {
 
         // Every time we save the subbooking, we have to invalidate caches.
         // Trigger an event that booking option has been updated.
-
         $context = context_module::instance($data->cmid);
-        $event = \mod_booking\event\bookingoption_updated::create([
-                                                                    'context' => $context,
-                                                                    'objectid' => $data->optionid,
-                                                                    'userid' => $USER->id,
-                                                                ]);
-        $event->trigger();
+        booking_option::trigger_updated_event($context, $data->optionid, $USER->id, $USER->id, 'subbookings');
 
         return;
     }
@@ -182,10 +193,19 @@ class subbookings_info {
     /**
      * Delete a booking subbooking by its ID.
      * @param int $subbookingid the ID of the subbooking
+     * @param int $cmid
+     * @param int $optionid
      */
-    public static function delete_subbooking(int $subbookingid) {
-        global $DB;
+    public static function delete_subbooking(
+        int $subbookingid,
+        int $cmid,
+        int $optionid
+        ) {
+        global $DB, $USER;
         $DB->delete_records('booking_subbooking_options', ['id' => (int)$subbookingid]);
+
+        $context = context_module::instance($cmid);
+        booking_option::trigger_updated_event($context, $optionid, $USER->id, $USER->id, 'subbookings');
     }
 
     /**
@@ -234,12 +254,18 @@ class subbookings_info {
         $mform->registerNoSubmitButton('btn_subbookingtype');
         $buttonargs = ['style' => 'visibility:hidden;'];
         $categoryselect = [
-            $mform->createElement('select', 'subbooking_type',
-            get_string('bookingsubbooking', 'mod_booking'), $subbookingsforselect),
-            $mform->createElement('submit',
+            $mform->createElement(
+                'select',
+                'subbooking_type',
+                get_string('bookingsubbooking', 'mod_booking'),
+                $subbookingsforselect
+            ),
+            $mform->createElement(
+                'submit',
                 'btn_subbookingtype',
                 get_string('bookingsubbooking', 'mod_booking'),
-                $buttonargs),
+                $buttonargs
+            ),
         ];
         $mform->addGroup($categoryselect, 'subbooking_type', get_string('bookingsubbooking', 'mod_booking'), [' '], false);
         $mform->setType('btn_subbookingtype', PARAM_NOTAGS);
@@ -247,7 +273,7 @@ class subbookings_info {
         if (isset($formdata['subbooking_type'])) {
             $subbooking = self::get_subbooking($formdata['subbooking_type']);
         } else {
-            list($subbooking) = $subbookingtypes;
+            [$subbooking] = $subbookingtypes;
         }
 
         // Finally, after having chosen the right type of subbooking, we add the corresponding elements.
@@ -283,13 +309,22 @@ class subbookings_info {
      * ... which may want to introduce a page in the booking process.
      * Blocking subbookings are handled by a different bo_condition.
      *
-     * @param object $settings
-     * @return bool
+     * @param booking_option_settings $settings
+     * @param mixed $userid
+     *
+     * @return [type]
+     *
      */
-    public static function has_soft_subbookings(object $settings) {
+    public static function has_soft_subbookings(booking_option_settings $settings, $userid) {
 
         foreach ($settings->subbookings as $subbooking) {
-            if ($subbooking->block != 1) {
+
+            if ($subbooking->block != 0) {
+                continue;
+            }
+            // A subbooking can block, which means that it demands to be shown.
+            // This blocking depends on circumstances which are tested in the is_blocking function.
+            if ($subbooking->is_blocking($settings, $userid)) {
                 return true;
             }
         }
@@ -325,7 +360,7 @@ class subbookings_info {
      *
      * @param string $area
      * @param int $itemid
-     * @return booking_subbooking
+     * @return object
      */
     public static function get_subbooking_by_area_and_id(string $area, int $itemid) {
         global $DB;
@@ -381,55 +416,66 @@ class subbookings_info {
             return true;
         }
 
+        $settings =
+            singleton_service::get_instance_of_booking_option_settings($subbooking->optionid);
+
         // Do we need to update and if so, which records?
 
         switch ($status) {
             case MOD_BOOKING_STATUSPARAM_BOOKED: // We actually book.
                 // Check if there was a reserved or waiting list entry before.
-                self::update_or_insert_answer(
+                $id = self::update_or_insert_answer(
                     $subbooking,
                     $itemid,
                     $userid,
                     MOD_BOOKING_STATUSPARAM_BOOKED,
-                    [MOD_BOOKING_STATUSPARAM_RESERVED, MOD_BOOKING_STATUSPARAM_WAITINGLIST]);
+                    [MOD_BOOKING_STATUSPARAM_RESERVED, MOD_BOOKING_STATUSPARAM_WAITINGLIST]
+                );
+                // These after booking actions are only called when we have actually booked.
+                $subbooking->after_booking_action($settings, $userid, $id);
                 break;
             case MOD_BOOKING_STATUSPARAM_WAITINGLIST: // We move to the waiting list.
                 // Check if there was a reserved entry before.
-                self::update_or_insert_answer(
+                $id = self::update_or_insert_answer(
                     $subbooking,
                     $itemid,
                     $userid,
                     MOD_BOOKING_STATUSPARAM_WAITINGLIST,
-                    [MOD_BOOKING_STATUSPARAM_RESERVED]);
+                    [MOD_BOOKING_STATUSPARAM_RESERVED]
+                );
                 break;
             case MOD_BOOKING_STATUSPARAM_RESERVED: // We only want to use shortterm reservation.
                 // Check if there was a reserved or waiting list entry before.
-                self::update_or_insert_answer(
+                $id = self::update_or_insert_answer(
                     $subbooking,
                     $itemid,
                     $userid,
                     MOD_BOOKING_STATUSPARAM_RESERVED,
-                    [MOD_BOOKING_STATUSPARAM_WAITINGLIST, MOD_BOOKING_STATUSPARAM_RESERVED]);
+                    [MOD_BOOKING_STATUSPARAM_WAITINGLIST, MOD_BOOKING_STATUSPARAM_RESERVED]
+                );
                 break;
             case MOD_BOOKING_STATUSPARAM_NOTBOOKED: // We only want to delete the shortterm reservation.
                 // Check if there was a reserved entry before.
-                self::update_or_insert_answer(
+                $id = self::update_or_insert_answer(
                     $subbooking,
                     $itemid,
                     $userid,
                     MOD_BOOKING_STATUSPARAM_NOTBOOKED,
-                    [MOD_BOOKING_STATUSPARAM_RESERVED]);
+                    [MOD_BOOKING_STATUSPARAM_RESERVED]
+                );
                 break;
             case MOD_BOOKING_STATUSPARAM_DELETED: // We delete the existing subscription.
                 // Check if there was a booked entry before.
-                self::update_or_insert_answer(
+                $id = self::update_or_insert_answer(
                     $subbooking,
                     $itemid,
                     $userid,
                     MOD_BOOKING_STATUSPARAM_DELETED,
-                    [MOD_BOOKING_STATUSPARAM_BOOKED]);
+                    [MOD_BOOKING_STATUSPARAM_BOOKED]
+                );
                 break;
         };
+
         return true;
     }
 
@@ -442,14 +488,21 @@ class subbookings_info {
      * @param int $userid
      * @param int $newstatus
      * @param array $oldstatus
-     * @return bool
+     * @return int
      */
-    private static function update_or_insert_answer(object $subbooking, int $itemid, int $userid,
-        int $newstatus, array $oldstatus) {
+    private static function update_or_insert_answer(
+        object $subbooking,
+        int $itemid,
+        int $userid,
+        int $newstatus,
+        array $oldstatus
+    ) {
 
         global $DB, $USER;
 
         $now = time();
+
+        $id = 0;
 
         if ($records = self::return_subbooking_answers($subbooking->id, $itemid, $subbooking->optionid, $userid, $oldstatus)) {
             while (count($records) > 0) {
@@ -459,13 +512,17 @@ class subbookings_info {
                     $record->timemodified = $now;
                     $record->status = $newstatus;
                     $DB->update_record('booking_subbooking_answers', $record);
+
+                    $id = $record->id;
                 } else {
                     // This is just for cleaning, should never happen.
                     $DB->delete_records('booking_subbooking_answers', ['id' => $record->id]);
                 }
             }
-        } else if ($newstatus !== MOD_BOOKING_STATUSPARAM_DELETED || $newstatus !== MOD_BOOKING_STATUSPARAM_NOTBOOKED) {
-
+        } else if (
+            $newstatus !== MOD_BOOKING_STATUSPARAM_DELETED
+            || $newstatus !== MOD_BOOKING_STATUSPARAM_NOTBOOKED
+        ) {
             $data = $subbooking->return_subbooking_information($itemid, $userid);
             $record = (object)[
                 'itemid' => $itemid,
@@ -481,8 +538,10 @@ class subbookings_info {
                 'timemodified' => $now,
             ];
 
-            $DB->insert_record('booking_subbooking_answers', $record);
+            $id = $DB->insert_record('booking_subbooking_answers', $record);
         }
+
+        return $id;
     }
 
     /**
@@ -515,8 +574,7 @@ class subbookings_info {
         ];
 
         if (!empty($status)) {
-
-            list ($inorequal, $ieparams) = $DB->get_in_or_equal($status, SQL_PARAMS_NAMED);
+            [$inorequal, $ieparams] = $DB->get_in_or_equal($status, SQL_PARAMS_NAMED);
             $sql .= " AND status $inorequal";
 
             foreach ($ieparams as $key => $value) {

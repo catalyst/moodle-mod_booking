@@ -82,16 +82,20 @@ class disablebookingusers extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
-     * @return string // If no warning, empty string.
+     * @param ?mixed $returnvalue
+     * @return array // Return changes.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
-        return parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+        parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+
+        $instance = new disablebookingusers();
+        $changes = $instance->check_for_changes($formdata, $instance);
+        return $changes;
     }
 
     /**
@@ -99,12 +103,22 @@ class disablebookingusers extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         $mform->addElement('advcheckbox', 'disablebookingusers', get_string('disablebookingusers', 'mod_booking'));
         $mform->setType('disablebookingusers', PARAM_INT);

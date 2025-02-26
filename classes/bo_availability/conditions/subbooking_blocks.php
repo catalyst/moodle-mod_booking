@@ -27,6 +27,7 @@
 namespace mod_booking\bo_availability\conditions;
 
 use mod_booking\bo_availability\bo_condition;
+use mod_booking\bo_availability\bo_info;
 use mod_booking\booking_option_settings;
 use mod_booking\singleton_service;
 use mod_booking\subbookings\subbookings_info;
@@ -47,6 +48,19 @@ class subbooking_blocks implements bo_condition {
 
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_SUBBOOKINGBLOCKS;
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = false;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -89,6 +103,18 @@ class subbooking_blocks implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -135,7 +161,7 @@ class subbooking_blocks implements bo_condition {
 
         $isavailable = $this->is_available($settings, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string($isavailable, $full, $settings);
 
         return [$isavailable, $description, MOD_BOOKING_BO_PREPAGE_PREBOOK, MOD_BOOKING_BO_BUTTON_NOBUTTON];
     }
@@ -170,7 +196,7 @@ class subbooking_blocks implements bo_condition {
         $dataarray = [];
         foreach ($settings->subbookings as $subbooking) {
             if ($subbooking->block) {
-                list($data, $template) = $subbooking->return_interface($settings);
+                list($data, $template) = $subbooking->return_interface($settings, $userid);
                 if (!empty($data)) {
                     $dataarray[] = $data;
                     $templates[] = $template;
@@ -204,8 +230,13 @@ class subbooking_blocks implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
         return ['', ''];
     }
@@ -215,12 +246,21 @@ class subbooking_blocks implements bo_condition {
      *
      * @param bool $isavailable
      * @param bool $full
+     * @param booking_option_settings $settings
      * @return string
      */
-    private function get_description_string($isavailable, $full) {
+    private function get_description_string(bool $isavailable, bool $full, booking_option_settings $settings) {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
         if ($isavailable) {
-            $description = $full ? get_string('bo_cond_isbookable_full_available', 'mod_booking') :
-                get_string('bo_cond_isbookable_available', 'mod_booking');
+            $description = $full ? get_string('bocondisbookablefullavailable', 'mod_booking') :
+                get_string('bocondisbookableavailable', 'mod_booking');
         } else {
 
             // If we have one or more subbookings, we render the interface here.

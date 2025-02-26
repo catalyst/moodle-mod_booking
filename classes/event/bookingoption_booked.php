@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-
 /**
  * The bookingoption_booked event.
  *
@@ -54,7 +53,7 @@ class bookingoption_booked extends \core\event\base {
      *
      */
     public static function get_name() {
-        return get_string('bookingoption_booked', 'booking');
+        return get_string('bookingoptionbooked', 'booking');
     }
 
     /**
@@ -64,11 +63,15 @@ class bookingoption_booked extends \core\event\base {
      *
      */
     public function get_description() {
+        $data = [
+            'userid' => $this->userid,
+            'relateduserid' => $this->data['relateduserid'],
+            'objectid' => $this->objectid,
+        ];
         if ($this->userid != $this->data['relateduserid']) {
-            return "The user with id {$this->userid} booked the user with id {$this->data['relateduserid']} "
-                . "to the option with id  {$this->objectid}.";
+            return get_string('bookingoptionbookedotheruserdesc', 'mod_booking', $data);
         } else {
-            return "The user with id {$this->userid} booked the booking option with id {$this->objectid}.";
+            return get_string('bookingoptionbookedsameuserdesc', 'mod_booking', $data);
         }
     }
 

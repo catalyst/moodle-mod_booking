@@ -44,7 +44,7 @@ $returnurl = optional_param('returnurl', '', PARAM_LOCALURL);
 // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
 /* $PAGE->requires->jquery_plugin('ui-css'); */
 
-list($course, $cm) = get_course_and_cm_from_cmid($cmid);
+[$course, $cm] = get_course_and_cm_from_cmid($cmid);
 
 require_course_login($course, false, $cm);
 
@@ -69,13 +69,23 @@ if (!$context = context_module::instance($cmid)) {
     throw new moodle_exception('badcontext');
 }
 
-if ((has_capability('mod/booking:updatebooking', $context) || (has_capability(
-    'mod/booking:addeditownoption', $context) && booking_check_if_teacher($optionid))) == false) {
+if (
+    (has_capability('mod/booking:updatebooking', $context) || (has_capability(
+        'mod/booking:addeditownoption',
+        $context
+    ) && booking_check_if_teacher($optionid))) == false
+) {
     throw new moodle_exception('nopermissions');
 }
 
 // We don't need this anymore.
 $optionid = $optionid < 0 ? 0 : $optionid;
+
+$settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+
+if (!empty($settings->cmid) && $settings->cmid != $cmid) {
+    throw new moodle_exception('badcontext');
+}
 
 // New code.
 $params = [
@@ -102,7 +112,7 @@ if (!empty($optionid)) {
         'alert alert-info editoption-youareediting-alert'
     );
     if (!wb_payment::pro_version_is_activated()) {
-        echo html_writer::div(get_string('optionformconfig_getpro', 'mod_booking'), 'small mt-2');
+        echo html_writer::div(get_string('optionformconfiggetpro', 'mod_booking'), 'small mt-2');
     }
 }
 

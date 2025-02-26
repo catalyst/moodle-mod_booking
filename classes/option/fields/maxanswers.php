@@ -24,8 +24,10 @@
 
 namespace mod_booking\option\fields;
 
+use mod_booking\booking_option_settings;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
+use mod_booking\singleton_service;
 use MoodleQuickForm;
 use stdClass;
 
@@ -82,20 +84,25 @@ class maxanswers extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
+
+        parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+
+        $instance = new maxanswers();
+        $changes = $instance->check_for_changes($formdata, $instance);
 
         if (!empty($formdata->maxanswers)) {
             $newoption->limitanswers = 1;
         }
 
-        return parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+        return $changes;
     }
 
     /**
@@ -103,14 +110,45 @@ class maxanswers extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         $mform->addElement('text', 'maxanswers', get_string('maxparticipantsnumber', 'mod_booking'));
         $mform->setType('maxanswers', PARAM_INT);
+    }
+
+    /**
+     * Standard function to transfer stored value to form.
+     * @param stdClass $data
+     * @param booking_option_settings $settings
+     * @return void
+     * @throws dml_exception
+     */
+    public static function set_data(stdClass &$data, booking_option_settings $settings) {
+        global $DB;
+
+        $key = fields_info::get_class_name(static::class);
+        // Normally, we don't call set data after the first time loading.
+        if (isset($data->{$key})) {
+            return;
+        }
+        // Fetch the original value from the DB, because in settings object might be overwritten by campaigns.
+        $value = $DB->get_field('booking_options', 'maxanswers', ['id' => $settings->id]);
+
+        $data->{$key} = $value;
     }
 }

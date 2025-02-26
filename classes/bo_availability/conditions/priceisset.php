@@ -28,9 +28,12 @@
 
 use context_module;
 use mod_booking\bo_availability\bo_condition;
+use mod_booking\bo_availability\bo_info;
 use mod_booking\booking_option_settings;
+use mod_booking\local\modechecker;
 use mod_booking\price;
 use mod_booking\singleton_service;
+use moodle_url;
 use MoodleQuickForm;
 
 defined('MOODLE_INTERNAL') || die();
@@ -52,6 +55,19 @@ class priceisset implements bo_condition {
 
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_PRICEISSET;
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = false;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -84,6 +100,16 @@ class priceisset implements bo_condition {
         // This is the return value. Not available to begin with.
         $isavailable = false;
 
+        if (!get_config('booking', 'displayemptyprice') && !empty($settings->jsonobject->useprice)) {
+            $user = singleton_service::get_instance_of_user($userid);
+            if ($user) {
+                $price = price::get_price('option', $settings->id, $user);
+                if (isset($price['price']) && empty((float) $price['price'])) {
+                    $isavailable = true;
+                }
+            }
+        }
+
         if (!get_config('booking', 'priceisalwayson')) {
 
             // If the user is not yet booked we return true.
@@ -99,6 +125,18 @@ class priceisset implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -141,7 +179,7 @@ class priceisset implements bo_condition {
 
         $isavailable = $this->is_available($settings, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string($isavailable, $full, $settings);
 
         // If shopping cart is not installed, we still want to allow admins to book for others.
         $context = context_module::instance($settings->cmid);
@@ -198,10 +236,15 @@ class priceisset implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
-        global $USER;
+        global $USER, $PAGE;
 
         $userid = !empty($userid) ? $userid : $USER->id;
 
@@ -223,6 +266,26 @@ class priceisset implements bo_condition {
             $data['fullwidth'] = $fullwidth;
         }
 
+        // The book only on details page avoid js and allows booking only on the details page.
+        if (
+            get_config('booking', 'bookonlyondetailspage')
+            && !modechecker::use_special_details_page_treatment()
+        ) {
+            $returnurl = $PAGE->url->out();
+
+            // The current page is not /mod/booking/optionview.php.
+            $url = new moodle_url("/mod/booking/optionview.php", [
+                "optionid" => (int)$settings->id,
+                "cmid" => (int)$settings->cmid,
+                "userid" => (int)$userid,
+                'returnto' => 'url',
+                'returnurl' => $returnurl,
+            ]);
+            $data['link'] = $url->out(false);
+            $data['nojs'] = true;
+            $data['role'] = '';
+        }
+
         return ['mod_booking/bookit_price', $data];
     }
 
@@ -231,15 +294,25 @@ class priceisset implements bo_condition {
      *
      * @param bool $isavailable
      * @param bool $full
+     * @param booking_option_settings $settings
      * @return string
      */
-    private function get_description_string($isavailable, $full): string {
+    private function get_description_string($isavailable, $full, $settings): string {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
+
         if ($isavailable) {
-            $description = $full ? get_string('bo_cond_priceisset_full_available', 'mod_booking') :
-                get_string('bo_cond_priceisset_available', 'mod_booking');
+            $description = $full ? get_string('bocondpriceissetfullavailable', 'mod_booking') :
+                get_string('bocondpriceissetavailable', 'mod_booking');
         } else {
-            $description = $full ? get_string('bo_cond_priceisset_full_not_available', 'mod_booking') :
-                get_string('bo_cond_priceisset_not_available', 'mod_booking');
+            $description = $full ? get_string('bocondpriceissetfullnotavailable', 'mod_booking') :
+                get_string('bocondpriceissetnotavailable', 'mod_booking');
         }
         return $description;
     }

@@ -29,10 +29,8 @@ require_once(__DIR__ . '/../../config.php');
 require_once($CFG->dirroot . '/mod/booking/locallib.php');
 require_once($CFG->libdir . '/adminlib.php');
 
-
 $cmid = optional_param('cmid', 0, PARAM_INT);
 $contextid = optional_param('contextid', 0, PARAM_INT);
-
 
 global $DB;
 
@@ -45,7 +43,7 @@ if (empty($cmid) && empty($contextid)) {
     $contextid = context_system::instance()->id;
 } else {
     if (!empty($cmid)) {
-        list($course, $cm) = get_course_and_cm_from_cmid($cmid, 'booking');
+        [$course, $cm] = get_course_and_cm_from_cmid($cmid, 'booking');
         require_course_login($course, false, $cm);
         $context = context_module::instance($cmid);
         $contextid = $context->id;
@@ -89,14 +87,22 @@ $PAGE->set_title(
 $output = $PAGE->get_renderer('booking');
 
 echo $output->header();
-echo $output->heading(get_string('bookingruleswithbadge', 'mod_booking'));
+echo $output->heading(get_string('bookingrules', 'mod_booking'));
 
-// Check if PRO version is active.
+echo get_string('linktoshowroom:bookingrules', 'mod_booking');
+
+// Check if PRO version is active. In free version, up to three rules can be edited for whole plugin, but none for coursemodule.
 if (wb_payment::pro_version_is_activated()) {
     echo booking_rules::get_rendered_list_of_saved_rules($contextid);
-
-} else {
+} else if (!empty($cmid)) {
     echo html_writer::div(get_string('infotext:prolicensenecessary', 'mod_booking'), 'alert alert-warning');
+} else {
+    $rules = booking_rules::get_list_of_saved_rules($contextid);
+    if (isset($rules) && count($rules) < 3) {
+        echo booking_rules::get_rendered_list_of_saved_rules($contextid);
+    } else if (isset($rules) && count($rules) >= 3) {
+        echo booking_rules::get_rendered_list_of_saved_rules($contextid, false);
+    }
 }
 
 $PAGE->requires->js_call_amd(
@@ -106,4 +112,3 @@ $PAGE->requires->js_call_amd(
 );
 
 echo $output->footer();
-

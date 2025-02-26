@@ -51,6 +51,19 @@ class confirmcancel implements bo_condition {
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_CONFIRMCANCEL;
 
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overridden. */
+    public $overwrittenbybillboard = false;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
+
     /**
      * Needed to see if class can take JSON.
      * @return bool
@@ -90,8 +103,18 @@ class confirmcancel implements bo_condition {
             $bookinganswer = singleton_service::get_instance_of_booking_answers($settings);
             $bookinginformation = $bookinganswer->return_all_booking_information($userid);
 
-            if (!isset($bookinginformation['onwaitinglist'])) {
+            if (!isset($bookinginformation['onwaitinglist'])
+                && !isset($bookinginformation['iambooked']['paidwithcredits'])) {
                 $isavailable = true; // True means, it won't be shown.
+            }
+
+            if (
+                $isavailable
+                && empty((float)($price['price'] ?? 0))
+                && empty(get_config('mod_booking', 'displayemptyprice'))
+            ) {
+                // We might want to override this, if there is a zero price.
+                $isavailable = false;
             }
         }
 
@@ -112,6 +135,18 @@ class confirmcancel implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -154,7 +189,7 @@ class confirmcancel implements bo_condition {
 
         $isavailable = $this->is_available($settings, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string();
 
         return [$isavailable, $description, MOD_BOOKING_BO_PREPAGE_NONE, MOD_BOOKING_BO_BUTTON_CANCEL];
     }
@@ -196,8 +231,13 @@ class confirmcancel implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
         global $USER;
 
@@ -216,6 +256,9 @@ class confirmcancel implements bo_condition {
      * @return string
      */
     private function get_description_string() {
+
+        // Don't trigger billboard here.
+
         return get_string('areyousure:cancel', 'mod_booking');
     }
 }

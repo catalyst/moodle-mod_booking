@@ -22,14 +22,14 @@
 import Ajax from 'core/ajax';
 import Templates from 'core/templates';
 import Notification from 'core/notification';
-
 import {reloadAllTables} from 'local_wunderbyte_table/reload';
+
 import {closeModal, closeInline} from 'mod_booking/bookingpage/prepageFooter';
 
 var currentbookitpage = {};
 var totalbookitpages = {};
 
-var SELECTORS = {
+export var SELECTORS = {
     MODALID: 'sbPrePageModal_',
     INLINEID: 'sbPrePageInline_',
     INMODALDIV: ' div.modalMainContent',
@@ -114,12 +114,123 @@ export const initbookitbutton = (itemid, area) => {
 
 
                 } else if (e.target.classList.contains('btn')) {
-                    bookit(itemid, area, userid, data);
+
+                    if (!e.target.href || e.target.href.length < 2) {
+                        bookit(itemid, area, userid, data);
+                    }
                 }
             });
         }
     });
 };
+
+/**
+ *
+ * @param {int} itemid
+ * @param {string} area
+ * @param {int} userid
+ * @param {object} data
+ */
+export function bookit(itemid, area, userid, data) {
+
+    // eslint-disable-next-line no-console
+    console.log('run bookit');
+
+    Ajax.call([{
+        methodname: "mod_booking_bookit",
+        args: {
+            'itemid': itemid,
+            'area': area,
+            'userid': userid,
+            'data': JSON.stringify(data),
+        },
+        done: function(res) {
+
+            var skipreload = false;
+
+            if (document.querySelector('.booking-elective-component')) {
+                window.location.reload();
+            }
+
+            const jsonarray = JSON.parse(res.json);
+
+            // We might have more than one template to render.
+            const templates = res.template.split(',');
+
+            // There might be more than one button area.
+            const buttons = document.querySelectorAll(SELECTORS.BOOKITBUTTON +
+                '[data-itemid=\'' + itemid + '\']' +
+                '[data-area=\'' + area + '\']');
+
+            const promises = [];
+
+            // We run through every button. and render the data.
+            buttons.forEach(button => {
+
+                // eslint-disable-next-line no-console
+                console.log('bookit values', button.dataset.nojs, res.status);
+                skipreload = true;
+                if (button.dataset.nojs == 1
+                    && res.status == 0) {
+                    // eslint-disable-next-line no-console
+                    console.log('bookit skip', button.dataset.nojs, res.status);
+                } else {
+                    // For every button, we need a new jsonarray.
+                    const arraytoreduce = [...jsonarray];
+                    if (res.status == 1) {
+                        skipreload = false;
+                    }
+                    templates.forEach(template => {
+
+                        const data = arraytoreduce.shift();
+
+                        const datatorender = data.data ?? data;
+
+                        const promise = Templates.renderForPromise(template, datatorender).then(({html, js}) => {
+
+                            Templates.replaceNode(button, html, js);
+
+                            return true;
+                        }).catch(ex => {
+                            Notification.addNotification({
+                                message: 'failed rendering ' + ex,
+                                type: "danger"
+                            });
+                        });
+
+                        promises.push(promise);
+                    });
+                }
+            });
+
+            Promise.all(promises).then(() => {
+
+                const backdrop = document.querySelector(SELECTORS.STATICBACKDROP);
+
+                if (area === 'subbooking') {
+                    skipreload = true;
+                } else {
+                    if (currentbookitpage[itemid] < totalbookitpages[itemid]) {
+                        skipreload = true;
+                    }
+                }
+
+                // eslint-disable-next-line no-console
+                console.log('skipreload', skipreload, currentbookitpage[itemid], totalbookitpages[itemid]);
+
+                if (!backdrop && !skipreload) {
+                    reloadAllTables();
+                }
+
+                // The actions on successful booking are executed elsewhere.
+                return true;
+            }).catch(e => {
+                // eslint-disable-next-line no-console
+                console.log(e);
+            });
+        }
+    }]);
+}
 
 /**
  * Gets called from mustache template.
@@ -138,6 +249,12 @@ export const initprepagemodal = (optionid, userid, totalnumberofpages, uniquid) 
         const elements = document.querySelectorAll("[id^=" + SELECTORS.MODALID);
 
         elements.forEach(element => {
+
+            if (element.querySelector('[data-action="bookondetail"]')) {
+                // eslint-disable-next-line no-console
+                console.log('bookondetail abort');
+                return;
+            }
 
             optionid = element.dataset.optionid;
             uniquid = element.dataset.uniquid;
@@ -210,10 +327,19 @@ export const initprepageinline = (optionid, userid, totalnumberofpages, uniquid)
         // eslint-disable-next-line no-console
         console.log('add listener to button', button, button.dataset.action);
 
+        if (button.querySelector('[data-action="bookondetail"]')) {
+            // eslint-disable-next-line no-console
+            console.log('bookondetail abort');
+            return;
+        }
+
         button.addEventListener('click', e => {
 
+            // eslint-disable-next-line no-console
+            console.log('e.target', e.target);
+
             // Get the row element.
-            let rowcontainer = e.target.closest('.row');
+            let rowcontainer = e.target.closest('.mod-booking-row');
 
             const transferarea = !rowcontainer.lastElementChild.classList.contains('inlineprepagearea');
             // We move the inlineprepagearea only if we need to.
@@ -319,7 +445,10 @@ export const loadPreBookingPage = (
         },
         done: function(response) {
             // Will always be 1, if shopping cart is not installed!
-            if (response.success == 1) {
+            if (response.success == 1
+                || response.success == 5 // Already booked, we need this for subbokings.
+                || response.success == 0 // Already in cart, we need this for subbokings.
+            ) {
                 Ajax.call([{
                     methodname: "mod_booking_load_pre_booking_page",
                     args: {
@@ -350,6 +479,8 @@ export const loadPreBookingPage = (
                 }]);
             } else {
 
+                // eslint-disable-next-line no-console
+                console.log('closeModal');
                 closeModal(optionid, false);
                 closeInline(optionid, false);
 
@@ -406,6 +537,7 @@ async function renderTemplatesOnPage(templates, dataarray, element) {
     modal.querySelector(SELECTORS.MODALBUTTONAREA).innerHTML = '';
     modal.querySelector(SELECTORS.MODALFOOTER).innerHTML = '';
 
+    var counter = 0;
     templates.forEach(async template => {
 
         const data = dataarray.shift();
@@ -439,8 +571,12 @@ async function renderTemplatesOnPage(templates, dataarray, element) {
 
         await Templates.renderForPromise(template, data.data).then(({html, js}) => {
 
-            Templates.replaceNodeContents(targetelement, html, js);
-
+            if (counter < 1) {
+                counter++;
+                Templates.replaceNodeContents(targetelement, html, js);
+            } else {
+                Templates.appendNodeContents(targetelement, html, js);
+            }
             return true;
         }).catch(ex => {
             Notification.addNotification({
@@ -451,87 +587,6 @@ async function renderTemplatesOnPage(templates, dataarray, element) {
         return true;
     });
     return true;
-}
-
-/**
- *
- * @param {int} itemid
- * @param {string} area
- * @param {int} userid
- * @param {object} data
- */
-function bookit(itemid, area, userid, data) {
-
-    Ajax.call([{
-        methodname: "mod_booking_bookit",
-        args: {
-            'itemid': itemid,
-            'area': area,
-            'userid': userid,
-            'data': JSON.stringify(data),
-        },
-        done: function(res) {
-
-            if (document.querySelector('.booking-elective-component')) {
-                window.location.reload();
-            }
-
-            const jsonarray = JSON.parse(res.json);
-
-            // We might have more than one template to render.
-            const templates = res.template.split(',');
-
-            // There might be more than one button area.
-            const buttons = document.querySelectorAll(SELECTORS.BOOKITBUTTON +
-                '[data-itemid=\'' + itemid + '\']' +
-                '[data-area=\'' + area + '\']');
-
-            const promises = [];
-
-            // We run through every button. and render the data.
-            buttons.forEach(button => {
-
-                // For every button, we need a new jsonarray.
-                const arraytoreduce = [...jsonarray];
-
-                templates.forEach(template => {
-
-                    const data = arraytoreduce.shift();
-
-                    const datatorender = data.data ?? data;
-
-                    const promise = Templates.renderForPromise(template, datatorender).then(({html, js}) => {
-
-                        Templates.replaceNode(button, html, js);
-
-                        return true;
-                    }).catch(ex => {
-                        Notification.addNotification({
-                            message: 'failed rendering ' + ex,
-                            type: "danger"
-                        });
-                    });
-
-                    promises.push(promise);
-                });
-            });
-
-            Promise.all(promises).then(() => {
-
-                const backdrop = document.querySelector(SELECTORS.STATICBACKDROP);
-
-                if (!backdrop) {
-                    reloadAllTables();
-                }
-
-                // The actions on successful booking are executed elsewhere.
-                return true;
-            }).catch(e => {
-                // eslint-disable-next-line no-console
-                console.log(e);
-            });
-        }
-    }]);
 }
 
 /**
@@ -592,6 +647,9 @@ function returnVisibleElement(optionid, uniquid, appendedSelector) {
  * @param {int} userid
  */
 export function continueToNextPage(optionid, userid) {
+
+    // eslint-disable-next-line no-console
+    console.log('continueToNextPage', optionid, userid, currentbookitpage[optionid], totalbookitpages[optionid]);
     if (currentbookitpage[optionid] < totalbookitpages[optionid]) {
         currentbookitpage[optionid]++;
         loadPreBookingPage(optionid, userid);

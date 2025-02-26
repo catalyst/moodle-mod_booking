@@ -87,14 +87,14 @@ class template extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         return parent::prepare_save_field($formdata, $newoption, $updateparam, '');
     }
@@ -104,9 +104,17 @@ class template extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         if (!empty($formdata['id'])) {
             return;
@@ -123,7 +131,9 @@ class template extends field_base {
         }
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         // Button to attach JavaScript to reload the form.
         $mform->registerNoSubmitButton('btn_changetemplate');
@@ -161,11 +171,10 @@ class template extends field_base {
             return;
         }
 
-        if (isset($data->btn_changetemplate)
-            || !empty($data->copyoptionid)) {
+        if (isset($data->btn_changetemplate)) {
             // First, retrieve the template we want to use.
 
-            $optionid = !empty($data->optiontemplateid) ? $data->optiontemplateid : $data->copyoptionid;
+            $optionid = $data->optiontemplateid;
             // Now, we need to create the data for this option the same way we would create it otherwise...
             $templateoption = (object)[
                 'cmid' => $data->cmid,

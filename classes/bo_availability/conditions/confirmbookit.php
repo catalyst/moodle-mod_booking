@@ -46,9 +46,21 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class confirmbookit implements bo_condition {
-
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_CONFIRMBOOKIT;
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = false;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -103,6 +115,18 @@ class confirmbookit implements bo_condition {
     }
 
     /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
+    }
+
+    /**
      * The hard block is complementary to the is_available check.
      * While is_available is used to build eg also the prebooking modals and...
      * ... introduces eg the booking policy or the subbooking page, the hard block is meant to prevent ...
@@ -142,7 +166,7 @@ class confirmbookit implements bo_condition {
 
         $isavailable = $this->is_available($settings, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string();
 
         return [$isavailable, $description, MOD_BOOKING_BO_PREPAGE_NONE, MOD_BOOKING_BO_BUTTON_MYBUTTON];
     }
@@ -184,8 +208,13 @@ class confirmbookit implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
         global $USER;
 
@@ -194,8 +223,17 @@ class confirmbookit implements bo_condition {
         }
         $label = $this->get_description_string();
 
-        return bo_info::render_button($settings, $userid, $label, 'btn btn-warning', false, $fullwidth,
-            'button', 'option', false);
+        return bo_info::render_button(
+            $settings,
+            $userid,
+            $label,
+            'btn btn-warning',
+            false,
+            $fullwidth,
+            'button',
+            'option',
+            false
+        );
     }
 
     /**
@@ -204,6 +242,8 @@ class confirmbookit implements bo_condition {
      * @return string
      */
     private function get_description_string() {
+        // Don't trigger billboard here.
+
         return get_string('areyousure:book', 'mod_booking');
     }
 }

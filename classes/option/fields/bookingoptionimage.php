@@ -24,6 +24,7 @@
 
 namespace mod_booking\option\fields;
 
+use context_user;
 use mod_booking\booking_option_settings;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
@@ -85,16 +86,22 @@ class bookingoptionimage extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
-        return parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+        parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+
+        $mockdata = new stdClass();
+        $mockdata->id = $formdata->id; // Just any id to make sure settings are applied.
+        $mockdata->cmid = $formdata->cmid;
+
+        return [];
     }
 
     /**
@@ -103,20 +110,51 @@ class bookingoptionimage extends field_base {
      * @param stdClass $formdata
      * @param stdClass $option
      * @param int $index
-     * @return void
+     * @return array
      * @throws \dml_exception
      */
-    public static function save_data(stdClass &$formdata, stdClass &$option, int $index = 0) {
+    public static function save_data(stdClass &$formdata, stdClass &$option, int $index = 0): array {
+        global $USER;
 
         $cmid = $formdata->cmid;
         $optionid = $option->id;
+        $changes = [];
 
         $context = context_module::instance($cmid);
 
-        if ($draftimageid = $formdata->bookingoptionimage ?? false) {
+        if ($draftimageid = $formdata->bookingoptionimage ?? false ?? false ?? false) {
+            $fs = get_file_storage();
+            $usercontext = context_user::instance($USER->id);
+            $newfiles = $fs->get_area_files($usercontext->id, 'user', 'draft', $draftimageid, 'id');
+            $oldfiles = $fs->get_area_files($context->id, 'mod_booking', 'bookingoptionimage', $optionid, 'id');
+            $newhashes = [];
+            $oldhashes = [];
+            foreach ($newfiles as $file) {
+                if (empty($file->get_filesize())) {
+                    continue;
+                }
+                $newhashes[$file->get_filename()] = $file->get_contenthash();
+            }
+
+            foreach ($oldfiles as $file) {
+                if (empty($file->get_filesize())) {
+                    continue;
+                }
+                $oldhashes[$file->get_filename()] = $file->get_contenthash();
+            }
+            if ($oldhashes != $newhashes) {
+
+                $changes = [ 'changes' => [
+                    'fieldname' => 'bookingoptionimage',
+                    'oldvalue' => array_keys($oldhashes)[0], // There is only one bookingoptionimage accepted, so no need for array.
+                    'newvalue' => array_keys($newhashes)[0],
+                    ],
+                ];
+            }
             file_save_draft_area_files($draftimageid, $context->id, 'mod_booking', 'bookingoptionimage',
                     $optionid, ['subdirs' => false, 'maxfiles' => 1]);
         }
+        return $changes;
     }
 
     /**
@@ -124,14 +162,24 @@ class bookingoptionimage extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         global $CFG;
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         // Upload an image for the booking option.
         $mform->addElement('filemanager',

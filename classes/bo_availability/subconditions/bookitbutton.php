@@ -52,6 +52,16 @@ class bookitbutton implements bo_subcondition {
     public $id = MOD_BOOKING_BO_COND_BOOKITBUTTON;
 
     /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
+
+    /**
      * Needed to see if class can take JSON.
      * @return bool
      */
@@ -110,7 +120,7 @@ class bookitbutton implements bo_subcondition {
 
         $isavailable = $this->is_available($settings, $subbookingid, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string();
 
         return [$isavailable, $description, MOD_BOOKING_BO_PREPAGE_BOOK, MOD_BOOKING_BO_BUTTON_MYBUTTON];
     }

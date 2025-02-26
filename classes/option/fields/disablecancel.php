@@ -28,6 +28,7 @@ use mod_booking\booking_option;
 use mod_booking\booking_option_settings;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
+use mod_booking\singleton_service;
 use MoodleQuickForm;
 use stdClass;
 
@@ -84,14 +85,14 @@ class disablecancel extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
-     * @return string // If no warning, empty string.
+     * @param ?mixed $returnvalue
+     * @return array // Changes.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         // We store the information if a booking option can be cancelled in the JSON.
         // So this has to happen BEFORE JSON is saved!
@@ -101,7 +102,12 @@ class disablecancel extends field_base {
         } else {
             booking_option::add_data_to_json($newoption, "disablecancel", 1);
         }
-        return '';
+
+        $instance = new disablecancel();
+        $mockdata = new stdClass();
+        $mockdata->id = $formdata->optionid ?? $formdata->id;
+        $changes = $instance->check_for_changes($formdata, $instance, $mockdata);
+        return $changes;
     }
 
     /**
@@ -109,14 +115,24 @@ class disablecancel extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         $optionid = $formdata['id'];
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         $mform->addElement('advcheckbox', 'disablecancel', get_string('disablecancel', 'mod_booking'));
         $mform->setType('disablecancel', PARAM_INT);
@@ -130,7 +146,6 @@ class disablecancel extends field_base {
      * @throws dml_exception
      */
     public static function set_data(stdClass &$data, booking_option_settings $settings) {
-
         $data->disablecancel = booking_option::get_value_of_json_by_key($data->id, "disablecancel");
     }
 }

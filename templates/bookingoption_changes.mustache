@@ -48,16 +48,63 @@
         {{#fieldname}}
         <tr>
             <td><b>{{.}}: </b></td>
-            <td style="color: red;">{{#oldvalue}}{{#str}} changeold, mod_booking {{/str}}<s>{{{.}}}</s>{{/oldvalue}}</td>
-            <td>{{#newvalue}}{{#str}} changenew, mod_booking {{/str}}{{{.}}}{{/newvalue}}</td>
+            <td>
+                <div class="changed-old-value">
+                    {{#oldvalue}}
+                        <div>
+                            {{#str}} changeold, mod_booking {{/str}}
+                            <s>{{{.}}}</s>
+                        </div>
+                    {{/oldvalue}}
+                </div>
+                <div>
+                    {{#newvalue}}
+                        <div class="changed-new-value">
+                            {{#str}} changenew, mod_booking {{/str}}
+                            {{{.}}}
+                        </div>
+                    {{/newvalue}}
+                </div>
+            </td>
+            <td></td>
         </tr>
         {{/fieldname}}
         <!-- Custom fields have no field name. -->
         {{^fieldname}}
         <tr>
-            <td><b>{{#newname}}{{#str}} changenew, mod_booking {{/str}}{{.}}{{/newname}} {{#oldname}}<div  style="color: red;">{{#str}} changeold, mod_booking {{/str}}<s>{{.}}</s></div>{{/oldname}}</b></td>
-            <td style="color: red;">{{#oldvalue}}{{#str}} changeold, mod_booking {{/str}}<s>{{{.}}}</s>{{/oldvalue}}</td>
-            <td>{{#newvalue}}{{#str}} changenew, mod_booking {{/str}}{{{.}}}{{/newvalue}}</td>
+            <td>
+                <b>
+                    {{#newname}}
+                        {{#str}} changenew, mod_booking {{/str}}
+                        {{.}}
+                    {{/newname}}
+                    {{#oldname}}
+                        <div class="changed-old-value">
+                            {{#str}} changeold, mod_booking {{/str}}
+                            <s>{{.}}</s>
+                        </div>
+                    {{/oldname}}
+                </b>
+            </td>
+            <td>
+                <div>
+                    {{#oldvalue}}
+                        <div class="changed-old-value">
+                            {{#str}} changeold, mod_booking {{/str}}
+                            <s>{{{.}}}</s>
+                        </div>
+                    {{/oldvalue}}
+                </div>
+                <div>
+                    {{#newvalue}}
+                        <div class="changed-new-value">
+                            {{#str}} changenew, mod_booking {{/str}}
+                            {{{.}}}
+                        </div>
+                    {{/newvalue}}
+                </div>
+            </td>
+            <td></td>
         </tr>
         {{/fieldname}}
     {{/changes}}

@@ -23,8 +23,10 @@
  */
 
 namespace mod_booking\event;
+use Exception;
 use mod_booking\output\bookingoption_changes;
 use mod_booking\singleton_service;
+use Throwable;
 
 /**
  * The bookingoption_updated event class.
@@ -55,7 +57,7 @@ class bookingoption_updated extends \core\event\base {
      *
      */
     public static function get_name() {
-        return get_string('bookingoption_updated', 'booking');
+        return get_string('bookingoptionupdated', 'booking');
     }
 
     /**
@@ -65,27 +67,7 @@ class bookingoption_updated extends \core\event\base {
      *
      */
     public function get_description() {
-
-        global $PAGE;
-
-        $data = $this->get_data();
-
-        $jsonstring = isset($data['other']) ? $data['other'] : '[]';
-        if (gettype($jsonstring) == 'string') {
-            $changes = (array) json_decode($jsonstring);
-        }
-
-        if (!empty($changes) && !empty($data['objectid'])) {
-            $settings = singleton_service::get_instance_of_booking_option_settings($data['objectid']);
-
-            $data = new bookingoption_changes($changes, $settings->cmid);
-            $renderer = $PAGE->get_renderer('mod_booking');
-            $html = $renderer->render_bookingoption_changes($data);
-        } else {
-            $html = '';
-        }
-
-        return "User with id '{$this->userid}' updated 'booking option' with id '{$this->objectid}'." . $html;
+        return $this->generate_description(false);
     }
 
     /**
@@ -96,5 +78,58 @@ class bookingoption_updated extends \core\event\base {
      */
     public function get_url() {
         return new \moodle_url('/mod/booking/report.php', ['id' => $this->contextinstanceid, 'optionid' => $this->objectid]);
+    }
+
+    /**
+     * Get short description i.e. for display in mail.
+     *
+     * @return string
+     *
+     */
+    public function get_simplified_description() {
+        return $this->generate_description(true);
+    }
+
+    /**
+     * Generate description either from default or simplified template.
+     *
+     * @param bool $simplified
+     *
+     * @return string
+     *
+     */
+    private function generate_description($simplified = false) {
+        global $PAGE;
+
+        try {
+            $data = $this->get_data();
+            $jsonstring = isset($data['other']) ? $data['other'] : '[]';
+            if (gettype($jsonstring) == 'string') {
+                $changes = (array) json_decode($jsonstring);
+            }
+
+            if (!empty($changes) && !empty($data['objectid'])) {
+                $settings = singleton_service::get_instance_of_booking_option_settings($data['objectid']);
+
+                $data = new bookingoption_changes($changes, $settings->cmid);
+                $renderer = $PAGE->get_renderer('mod_booking');
+                $html = $renderer->render_bookingoption_changes($data);
+            } else {
+                $html = '';
+            }
+
+            if ($simplified) {
+                return $html;
+            }
+
+            $infos = (object) [
+                'userid' => $this->userid,
+                'objectid' => $this->objectid,
+            ];
+            $infostring = get_string('bookingoptionupdateddesc', 'mod_booking', $infos);
+            return format_text($infostring . $html);
+        } catch (Throwable $e) {
+            return get_string('bookingoptionupdated', 'mod_booking');
+        }
     }
 }

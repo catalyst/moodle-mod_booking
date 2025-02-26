@@ -24,9 +24,10 @@
 
 namespace mod_booking\placeholders\placeholders;
 
+use html_writer;
 use mod_booking\placeholders\placeholders_info;
 use mod_booking\singleton_service;
-use moodle_exception;
+use moodle_url;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -39,7 +40,7 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @author Georg Maißer
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class qr_username {
+class bookingreportlink {
 
     /**
      * Function which takes a text, replaces the placeholders...
@@ -47,6 +48,9 @@ class qr_username {
      * @param int $cmid
      * @param int $optionid
      * @param int $userid
+     * @param int $installmentnr
+     * @param int $duedate
+     * @param float $price
      * @param string $text
      * @param array $params
      * @param int $descriptionparam
@@ -56,46 +60,46 @@ class qr_username {
         int $cmid = 0,
         int $optionid = 0,
         int $userid = 0,
+        int $installmentnr = 0,
+        int $duedate = 0,
+        float $price = 0,
         string &$text = '',
         array &$params = [],
         int $descriptionparam = MOD_BOOKING_DESCRIPTION_WEBSITE) {
 
         $classname = substr(strrchr(get_called_class(), '\\'), 1);
 
-        if (!empty($userid)) {
-
-            if (empty($cmid)) {
-                $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
-                $cmid = $settings->cmid;
-            }
+        if (!empty($cmid) && !empty($optionid)) {
 
             // The cachekey depends on the kind of placeholder and it's ttl.
             // If it's the same for all users, we don't use userid.
             // If it's the same for all options of a cmid, we don't use optionid.
-            $currlang = current_language();
-            $cachekey = "$classname-$currlang-$userid";
+            $cachekey = "$classname-$optionid";
             if (isset(placeholders_info::$placeholders[$cachekey])) {
                 return placeholders_info::$placeholders[$cachekey];
             }
 
-            $user = singleton_service::get_instance_of_user($userid);
+            $bookingreportlink = new moodle_url('/mod/booking/report.php', ['id' => $cmid, 'optionid' => $optionid]);
+            $value = html_writer::link($bookingreportlink, $bookingreportlink->out());
 
-            $value = isset($user->username) ?
-            '<img src="https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=' .
-            rawurlencode($user->username) . '&choe=UTF-8" title="QR encoded username" />' : '';
-
-            // Save the value to profit from singleton.
-            placeholders_info::$placeholders[$cachekey] = $value;
+             // Save the value to profit from singleton.
+             placeholders_info::$placeholders[$cachekey] = $value;
 
         } else {
-            throw new moodle_exception(
-                'paramnotpresent',
-                'mod_booking',
-                '',
-                '',
-                "You can't use param {{$classname}} without providing an option id.");
+            $classname = substr(strrchr(get_called_class(), '\\'), 1);
+            $value = get_string('sthwentwrongwithplaceholder', 'mod_booking', $classname);
         }
 
         return $value;
+    }
+
+    /**
+     * Function determine if placeholder class should be called at all.
+     *
+     * @return bool
+     *
+     */
+    public static function is_applicable(): bool {
+        return true;
     }
 }

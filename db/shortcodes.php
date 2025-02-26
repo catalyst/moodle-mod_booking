@@ -31,6 +31,10 @@ $shortcodes = [
         'callback' => 'mod_booking\shortcodes::recommendedin',
         'description' => 'recommendedin',
     ],
+    'courselist' => [
+        'callback' => 'mod_booking\shortcodes::courselist',
+        'description' => 'courselist',
+    ],
     'fieldofstudyoptions' => [
         'callback' => 'mod_booking\shortcodes::fieldofstudyoptions',
         'description' => 'fieldofstudyoptions',
@@ -38,5 +42,13 @@ $shortcodes = [
     'fieldofstudycohortoptions' => [
         'callback' => 'mod_booking\shortcodes::fieldofstudycohortoptions',
         'description' => 'fieldofstudycohortoptions',
+    ],
+    'bulkoperations' => [
+        'callback' => 'mod_booking\shortcodes::bulkoperations',
+        'description' => 'bulkoperations',
+    ],
+    'linkbacktocourse' => [
+        'callback' => 'mod_booking\shortcodes::linkbacktocourse',
+        'description' => 'linkbacktocourse',
     ],
 ];

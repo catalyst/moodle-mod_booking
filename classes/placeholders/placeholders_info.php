@@ -42,7 +42,6 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class placeholders_info {
-
     /**
      * @var array $placeholders
      */
@@ -60,7 +59,11 @@ class placeholders_info {
      * @param int $cmid
      * @param int $optionid
      * @param int $userid
+     * @param int $installmentnr
+     * @param int $duedate
+     * @param float $price
      * @param int $descriptionparam
+     * @param ?string $rulejson
      * @return string
      */
     public static function render_text(
@@ -68,7 +71,12 @@ class placeholders_info {
         int $cmid = 0,
         int $optionid = 0,
         int $userid = 0,
-        int $descriptionparam = MOD_BOOKING_DESCRIPTION_WEBSITE) {
+        int $installmentnr = 0,
+        int $duedate = 0,
+        float $price = 0,
+        int $descriptionparam = MOD_BOOKING_DESCRIPTION_WEBSITE,
+        ?string $rulejson = null
+    ) {
 
         global $USER;
 
@@ -80,15 +88,13 @@ class placeholders_info {
             $userid = $USER->id;
         }
 
-        // If there are placeholders at all...
-        // ... they will be localized. We need to replace them.
         if (!empty($placeholders)) {
-
             self::return_list_of_placeholders();
         }
+        $noreturn = [];
+        $return = [];
 
         foreach ($placeholders as $placeholder) {
-
             // We might need more complex placeholder for iteration...
             // ... (like {{# sessiondates}} or {{teacher 1}}). Therefore...
             // ... we need to explode the placeholders here.
@@ -96,23 +102,28 @@ class placeholders_info {
             // We don't want any numbers, because we need classnames.
             $identifier = preg_replace('/\d/', '', $placeholder);
 
-            // Now we "unlocalize" the classname.
-            $classname = self::$localizedplaceholders[$identifier] ?? $identifier;
+            // Keep the original identifier for later.
+            $classname = $identifier;
 
             // Now we can execute it.
+            $fieldexists = true;
             $class = 'mod_booking\placeholders\placeholders\\' . $classname;
             if (class_exists($class)) {
                 $value = $class::return_value(
                     $cmid,
                     $optionid,
                     $userid,
+                    $installmentnr,
+                    $duedate,
+                    $price,
                     $text, // Text can be changed in this function, if we need to replace sth.
                     $placeholders, // Placeholders can be changed in this function, if we need to replace sth.
-                    $descriptionparam);
+                    $descriptionparam,
+                    $rulejson
+                );
 
                 // In some cases, we might receive an array instead of string.
                 if (is_array($value)) {
-
                     // First we check if we had a number in our original placeholder.
                     $number = str_replace($identifier, '', $placeholder);
 
@@ -135,12 +146,59 @@ class placeholders_info {
                     $userid,
                     $text,
                     $placeholders,
-                    $placeholder);
+                    $placeholder,
+                    $fieldexists
+                );
             }
 
             if (!empty($value)) {
                 $searchstring = '{' . $placeholder . '}';
                 $text = str_replace($searchstring, $value, $text);
+                // Look for enclosing placeholder. Delete them.
+                $return[] = $placeholder;
+            } else {
+                $firstchar = mb_substr($placeholder, 0, 1);
+                if ($firstchar == "#" || $firstchar == "/") {
+                    continue;
+                }
+                if ($fieldexists) {
+                    $noreturn[] = $placeholder;
+                }
+            }
+        }
+
+        foreach ($placeholders as $index => $placeholder) {
+            $firstchar = mb_substr($placeholder, 0, 1);
+            $nameafterfirstchar = substr($placeholder, 1);
+            $emptyph = in_array($nameafterfirstchar, $noreturn); // Without first char.
+
+            if (($firstchar == "#") && $emptyph) {
+                // Case 1: Placeholder is found and it's empty.
+                foreach ($placeholders as $index => $ph) {
+                    // Check if we find the end of the section.
+                    $name = substr($ph, 1);
+                    $first = mb_substr($ph, 0, 1);
+
+                    if ($nameafterfirstchar == $name && $first == "/") {
+                        $end = $matches[0][$index];
+                        break;
+                    } else {
+                        $end = "";
+                    }
+                }
+                // Delete everything beetween enclosing placeholder.
+                if (!empty($end)) {
+                    $pattern = '/' . preg_quote('{' . $placeholder . '}', '/') . '.*?' . preg_quote($end, '/') . '/s';
+                } else {
+                    $pattern = '/\$\{placeholder\}/';
+                }
+                $text = preg_replace($pattern, '', $text);
+            } else if (
+                ($firstchar == "#" || $firstchar == "/")
+                && in_array($nameafterfirstchar, $return)
+            ) {
+                // Case 2: Placeholder is not empty, remove the enclosing placeholders.
+                $text = str_replace('{' . $placeholder . '}', '', $text);
             }
         }
         return $text;
@@ -161,7 +219,7 @@ class placeholders_info {
 
         $placeholders = [];
         foreach (self::$localizedplaceholders as $key => $value) {
-            $placeholders[] = "<li data-id='$value'>{" . $key . "}</li>";
+            $placeholders[] = "<li data-id='$value'>{" . $value . "} " . $key . "</li>";
         }
 
         $returnstring = implode('<br>', $placeholders);
@@ -194,6 +252,10 @@ class placeholders_info {
         ];
 
         foreach ($placeholders as $key => $value) {
+            if (!$key::is_applicable()) {
+                continue;
+            }
+
             $class = substr(strrchr($key, '\\'), 1);
 
             if (isset($specialtreatmentclasses[$class])) {
@@ -203,5 +265,6 @@ class placeholders_info {
             // We use the localized strings as keys and the classnames as values.
             self::$localizedplaceholders[get_string($class, 'mod_booking')] = $class;
         }
+        return self::$localizedplaceholders;
     }
 }

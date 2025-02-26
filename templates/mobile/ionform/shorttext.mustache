@@ -1,0 +1,30 @@
+{{=<% %>=}}
+
+<%#arguments%>
+            <% key %>
+            <br>
+            <% value %>
+<%/arguments%>
+
+<div>
+  <%#myform%>
+    <ion-item>  
+      <ion-input 
+        label="<% label %>"
+        value="<% value %>"
+        placeholder="<% value %>" 
+        ng-reflect-model="<% value %>"
+        name="<% name %>"
+        style="--background: #f0f0f0;"
+        [(ngModel)]='CONTENT_OTHERDATA.data["<% name %>"]'
+        >
+      </ion-input>
+      <%# error %>
+        <ion-text color="danger">
+          <% error %>
+        </ion-text>
+      <%/ error %>
+      
+    </ion-item>
+  <%/myform%>
+</div>

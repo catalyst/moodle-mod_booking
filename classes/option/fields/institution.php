@@ -28,6 +28,7 @@ use mod_booking\booking_option;
 use mod_booking\option\fields;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
+use mod_booking\singleton_service;
 use MoodleQuickForm;
 use stdClass;
 
@@ -85,16 +86,19 @@ class institution extends field_base {
      * @param stdClass $newoption
      * @param int $updateparam
      * @param mixed $returnvalue
-     * @return string // If no warning, empty string.
+     * @return array // Covers changes & warnings, if nothing to report: empty array.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = ''): string {
+        $returnvalue = ''): array {
 
         $key = fields_info::get_class_name(static::class);
         $value = $formdata->{$key} ?? '';
+
+        $instance = new institution();
+        $changes = $instance->check_for_changes($formdata, $instance, null, $key, $value);
 
         if (!empty($value)) {
             $newoption->{$key} = $value;
@@ -102,8 +106,8 @@ class institution extends field_base {
             $newoption->{$key} = $returnvalue;
         }
 
-        // We can return an warning message here.
-        return '';
+        // We can return a warning message here.
+        return $changes;
     }
 
     /**
@@ -111,14 +115,24 @@ class institution extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         global $DB;
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         // Institution.
         $sql = 'SELECT DISTINCT institution FROM {booking_options} ORDER BY institution';

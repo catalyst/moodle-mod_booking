@@ -26,27 +26,21 @@
 defined('MOODLE_INTERNAL') || die();
 
 $functions = [
-    'mod_booking_enrol_user' => [
-        'classname' => 'mod_booking\external\enrol_user',
-        'description' => 'Enrol user via AJAX',
+    'mod_booking_bookit' => [
+        'classname' => 'mod_booking\external\bookit',
+        'description' => 'Book option or suboption via ajax',
         'type' => 'write',
+        'capabilities' => 'mod/booking:choose',
         'ajax' => true,
-        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE, 'local_mobile'],
+        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE, 'moodle_mobile_app'],
     ],
-    'mod_booking_unenrol_user' => [
-        'classname' => 'mod_booking\external\unenrol_user',
-        'description' => 'Unenrol user via AJAX',
-        'type' => 'write',
-        'ajax' => true,
-        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE, 'local_mobile'],
-    ],
-    'mod_booking_update_bookingnotes' => [
-        'classname' => 'mod_booking\external\update_bookingnotes',
-        'description' => 'Update the booking notes via AJAX',
-        'type' => 'write',
-        'ajax' => true,
-        'capabilities' => 'mod/booking:readresponses',
-        'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE, 'local_mobile'],
+    'mod_booking_get_submission_mobile' => [
+      'classname' => 'mod_booking\external\get_submission_mobile',
+      'description' => 'Checks the submission form',
+      'type' => 'read',
+      'capabilities' => '',
+      'ajax' => 1,
+      'services' => [MOODLE_OFFICIAL_MOBILE_SERVICE, 'moodle_mobile_app'],
     ],
     'mod_booking_addbookingoption' => [ // Function will be added manually to service, only for admin use.
         'classname' => 'mod_booking\external\addbookingoption',
@@ -104,13 +98,6 @@ $functions = [
         'capabilities' => '',
         'ajax' => true,
     ],
-    'mod_booking_bookit' => [
-        'classname' => 'mod_booking\external\bookit',
-        'description' => 'Book option or suboption via ajax',
-        'type' => 'write',
-        'capabilities' => '',
-        'ajax' => true,
-    ],
     'mod_booking_init_comments' => [
         'classname' => 'mod_booking\external\init_comments',
         'description' => 'Init commenting',
@@ -146,6 +133,13 @@ $functions = [
         'capabilities' => '',
         'ajax' => 1,
     ],
+    'mod_booking_search_templates' => [
+        'classname' => 'mod_booking\external\search_templates',
+        'description' => 'Search a list of course templates',
+        'type' => 'read',
+        'capabilities' => '',
+        'ajax' => 1,
+    ],
     'mod_booking_allow_add_item_to_cart' => [
         'classname' => 'mod_booking\external\allow_add_item_to_cart',
         'description' => 'Check if item can be added to cart',
@@ -173,6 +167,20 @@ $functions = [
         'type' => 'read',
         'capabilities' => '',
         'ajax' => 1,
+    ],
+    'mod_booking_set_checked_booking_instance' => [
+        'classname' => 'mod_booking\external\set_checked_booking_instance',
+        'description' => 'Set booking instance config',
+        'type' => 'read',
+        'capabilities' => '',
+        'ajax' => 1,
+    ],
+    'mod_booking_update_bookingnotes' => [
+        'classname'     => 'mod_booking\external\update_bookingnotes',
+        'description'   => 'Update the booking notes via AJAX',
+        'type'          => 'write',
+        'capabilities'  => 'mod/booking:readresponses',
+        'ajax'          => 1,
     ],
 ];
 

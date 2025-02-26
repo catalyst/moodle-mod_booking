@@ -18,23 +18,29 @@ Feature: Edit booking's organizer, info and semester settings as a teacher or ad
       | admin1   | C1     | manager        |
       | student1 | C1     | student        |
       | student2 | C1     | student        |
+    And I clean booking cache
     And the following "activities" exist:
       | activity | course | name       | intro                  | bookingmanager | eventtype | Default view for booking options | Send confirmation e-mail |
       | booking  | C1     | My booking | My booking description | teacher1       | Webinar   | All bookings                     | Yes                      |
     And I create booking option "New option" in "My booking"
+    ## Unfortunately, TinyMCE is slow and has misbehavior which might cause number of site-wide issues. So - we disable it.
+    And the following config values are set as admin:
+      | config      | value         |
+      | texteditors | atto,textarea |
     And I change viewport size to "1366x10000"
 
   @javascript
   Scenario: Edit booking instance settings
-    Given I am on the "My booking" Activity page logged in as teacher1
+    Given I change viewport size to "1366x11000"
+    And I am on the "My booking" Activity page logged in as teacher1
     Then I follow "Settings"
     And I set the following fields to these values:
-      | pollurl | https://example.com |
-    And I set the field "Send confirmation e-mail" to "Yes"
-    And I set the following fields to these values:
-      | Booking confirmation          | {bookingdetails} - Detailed summary of the booking option (incl. sessions und link to booking option) |
-      | Max current bookings per user | 30                                                                                                    |
+      | Booking instance name         | BookingUpd          |
+      | pollurl                       | https://example.com |
+      | Max current bookings per user | 30 |
     And I press "Save and display"
+    And I wait until the page is ready
+    And I should see "BookingUpd"
 
   @javascript
   Scenario: Settings - show organizer
@@ -106,7 +112,7 @@ Feature: Edit booking's organizer, info and semester settings as a teacher or ad
   @javascript
   Scenario: Booking settings - access the teacher pages without login
     Given the following "mod_booking > options" exist:
-      | booking    | text                      | course | description  | optiondateid_1 | daystonotify_1 | coursestarttime_1 | courseendtime_1 | teachersforoption |
+      | booking    | text                      | course | description  | optiondateid_0 | daystonotify_0 | coursestarttime_0 | courseendtime_0 | teachersforoption |
       | My booking | Booking option - Teachers | C1     | Option deskr | 0              | 0              | ## tomorrow ##    | ## +2 days ##   | teacher1          |
     And I log in as "admin"
     And I set the following administration settings values:
@@ -121,14 +127,14 @@ Feature: Edit booking's organizer, info and semester settings as a teacher or ad
     And I log out
     And I visit "/mod/booking/teachers.php"
     And I wait until the page is ready
-    Then I should see "Teacher 1" in the ".page-allteachers-card" "css_element"
+    Then I should see "1 Teacher" in the ".page-allteachers-card" "css_element"
     And I follow "Teacher"
-    And I should see "Teacher 1" in the ".card-title" "css_element"
+    And I should see "1 Teacher" in the ".card-title" "css_element"
 
   @javascript
   Scenario: Booking settings - display teachers email pages without login
     Given the following "mod_booking > options" exist:
-      | booking    | text                      | course | description  | optiondateid_1 | daystonotify_1 | coursestarttime_1 | courseendtime_1 | teachersforoption |
+      | booking    | text                      | course | description  | optiondateid_0 | daystonotify_0 | coursestarttime_0 | courseendtime_0 | teachersforoption |
       | My booking | Booking option - Teachers | C1     | Option deskr | 0              | 0              | ## tomorrow ##    | ## +2 days ##   | teacher1          |
     And I log in as "admin"
     And I set the following administration settings values:
@@ -137,10 +143,10 @@ Feature: Edit booking's organizer, info and semester settings as a teacher or ad
     And I log out
     When I visit "/mod/booking/teachers.php"
     And I wait until the page is ready
-    Then I should see "Teacher 1" in the ".page-allteachers-card" "css_element"
+    Then I should see "1 Teacher" in the ".page-allteachers-card" "css_element"
     And I should not see "Mail" in the ".page-allteachers-card" "css_element"
     And I follow "Teacher"
-    And I should see "Teacher 1" in the ".card-title" "css_element"
+    And I should see "1 Teacher" in the ".card-title" "css_element"
     And I should not see "teacher1@example.com" in the ".card-title" "css_element"
     And I log in as "admin"
     And I set the following administration settings values:
@@ -149,20 +155,62 @@ Feature: Edit booking's organizer, info and semester settings as a teacher or ad
     And I log out
     And I visit "/mod/booking/teachers.php"
     And I wait until the page is ready
-    And I should see "Teacher 1" in the ".page-allteachers-card" "css_element"
+    And I should see "1 Teacher" in the ".page-allteachers-card" "css_element"
     And I should see "Mail" in the ".page-allteachers-card" "css_element"
     And I follow "Teacher"
-    And I should see "Teacher 1" in the ".card-title" "css_element"
+    And I should see "1 Teacher" in the ".card-title" "css_element"
     And I should see "teacher1@example.com" in the ".card-body" "css_element"
 
   @javascript
   Scenario: Booking settings - hide branding info
     Given I log in as "admin"
     When I set the following administration settings values:
-      | Do not show Wunderbyte logo und link | |
+      | Do not show Wunderbyte logo and link | |
     And I am on the "My booking" Activity page
     And I should see "Booking module created by Wunderbyte GmbH" in the "#region-main" "css_element"
     And I set the following administration settings values:
-      | Do not show Wunderbyte logo und link | 1 |
+      | Do not show Wunderbyte logo and link | 1 |
     And I am on the "My booking" Activity page
     Then I should not see "Booking module created by Wunderbyte GmbH" in the "#region-main" "css_element"
+
+  @javascript
+  Scenario: Booking settings: control deprecated email templates
+    Given the following config values are set as admin:
+      | config                 | value | plugin      |
+      | uselegacymailtemplates | 1     | mod_booking |
+    And I am on the "My booking" Activity page logged in as admin
+    And I follow "Settings"
+    And I wait until the page is ready
+    And I should see "E-mail settings" in the "#id_emailsettings" "css_element"
+    And I should see "Deprecated" in the "#id_emailsettings" "css_element"
+    And I expand all fieldsets
+    And I should see "Booking confirmation" in the "#id_emailsettings" "css_element"
+    And I should see "Teacher notification before start" in the "#id_emailsettings" "css_element"
+    And I should see "Status change message" in the "#id_emailsettings" "css_element"
+    ## The only way to remove setting for some reason
+    And I visit "/admin/category.php?category=modbookingfolder"
+    And I set the field "Still use legacy mail templates" to ""
+    And I press "Save"
+    And I am on the "My booking" Activity page
+    And I follow "Settings"
+    And I wait until the page is ready
+    And "#id_emailsettings" "css_element" should not exist
+
+  @javascript
+  Scenario: Booking settings - display link to Moodle course on booked button
+    Given the following "mod_booking > options" exist:
+      | booking    | text         | course | description  | optiondateid_0 | daystonotify_0 | coursestarttime_0 | courseendtime_0 | teachersforoption |
+      | My booking | LinkOnBooked | C1     | Option deskr | 0              | 0              | ## tomorrow ##    | ## +2 days ##   | teacher1          |
+    And the following "mod_booking > answers" exist:
+      | booking    | option       | user     |
+      | My booking | LinkOnBooked | student1 |
+    And I am on the "My booking" Activity page logged in as student1
+    And I should see "Start" in the ".allbookingoptionstable_r1" "css_element"
+    And I log out
+    And I log in as "admin"
+    And I set the following administration settings values:
+      | Show Link to Moodle course directly on booked button |  |
+    And I press "Save changes"
+    And I log out
+    And I am on the "My booking" Activity page logged in as student1
+    And I should see "Booked" in the ".allbookingoptionstable_r1" "css_element"

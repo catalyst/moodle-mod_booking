@@ -1,32 +1,32 @@
 <template>
   <div class="mt-4">
     <div v-if="!showButtons">
-      <p><strong>{{ store.state.strings.vue_booking_stats_capability }}: {{ choosenCapability.name }}</strong></p>
+      <p><strong>{{ store.state.strings.vuebookingstatscapability }}: {{ store.state.strings[choosenCapability.capability] }}</strong></p>
       <div class="row mt-2">
         <div class="col-md-12">
           <button
             class="btn btn-secondary mr-2"
             @click="handleBackButtonClick"
           >
-            {{ store.state.strings.vue_booking_stats_back }}
+            {{ store.state.strings.vuebookingstatsback }}
           </button>
           <button
             class="btn btn-primary mr-2"
             @click="saveContent"
           >
-            {{ store.state.strings.vue_booking_stats_save }}
+            {{ store.state.strings.vuebookingstatssave }}
           </button>
           <button
             class="btn btn-warning"
             :disabled="showConfirmation"
             @click="showConfirmation=true"
           >
-            {{ store.state.strings.vue_booking_stats_restore }}
+            {{ store.state.strings.vuebookingstatsrestore }}
           </button>
 
           <!-- Confirmation dialog -->
           <div v-if="showConfirmationBack">
-            <ConfirmationModal 
+            <ConfirmationModal
               :show-confirmation-modal="showConfirmationBack"
               :strings="store.state.strings"
               @confirmBack="confirmBack"
@@ -34,34 +34,34 @@
           </div>
 
           <transition name="slide-fade">
-            <div 
+            <div
               v-if="changesMade.changesMade"
               class="unsaved-dialog"
             >
-              {{ store.state.strings.vue_capability_unsaved_changes }}
+              {{ store.state.strings.vuecapabilityunsavedchanges }}
             </div>
           </transition>
           <transition name="slide-fade">
-            <div 
-              v-if="showConfirmation" 
+            <div
+              v-if="showConfirmation"
               class="confirmation-dialog"
             >
               <div class="confirmation-content">
                 <p>
-                  {{ store.state.strings.vue_capability_unsaved_continue }}
+                  {{ store.state.strings.vuecapabilityunsavedcontinue }}
                 </p>
                 <div class="btn-row">
                   <button
                     class="btn btn-secondary mr-2"
                     @click="showConfirmation=false"
                   >
-                    {{ store.state.strings.vue_booking_stats_no }}
+                    {{ store.state.strings.vuebookingstatsno }}
                   </button>
                   <button
                     class="btn btn-primary mr-2"
                     @click="restoreContent"
                   >
-                    {{ store.state.strings.vue_booking_stats_yes }}
+                    {{ store.state.strings.vuebookingstatsyes }}
                   </button>
                 </div>
               </div>
@@ -81,7 +81,7 @@
                   type="checkbox"
                   @change="editAll"
                 >
-                <label :for="'select_all'"><strong>{{ store.state.strings.vue_booking_stats_select_all }}</strong></label>
+                <label :for="'select_all'"><strong>{{ store.state.strings.vuebookingstatsselectall }}</strong></label>
               </span>
             </li>
           </ul>
@@ -124,11 +124,11 @@ const props = defineProps({
       default: null,
     },
   activeTab: {
-    type: Array,
+    type: Number,
     default: null,
   },
   changesMade: {
-    type: Array,
+    type: Object || Array,
     default: null,
   },
 });
@@ -167,8 +167,8 @@ const saveContent = async () => {
     notificationSet(result, 'saved')
   } else {
     notify({
-      title: store.state.strings.vue_notification_title_unsave,
-      text: store.state.strings.vue_notification_text_unsave,
+      title: store.state.strings.vuenotificationtitleunsave,
+      text: store.state.strings.vuenotificationtextunsave,
       type: 'warn'
     });
   }
@@ -190,18 +190,18 @@ const restoreContent = async () => {
 const notificationSet = (result, action) => {
   if(result.status == 'success'){
     notify({
-      title: store.state.strings.vue_notification_title_action_success.replace('{$a}', action),
-      text: store.state.strings.vue_notification_text_action_success.replace('{$a}', action),
+      title: store.state.strings.vuenotificationtitleactionsuccess.replace('{$a}', action),
+      text: store.state.strings.vuenotificationtextactionsuccess.replace('{$a}', action),
       type: 'success'
     });
   }else {
     notify({
-      title: store.state.strings.vue_notification_title_action_fail.replace('{$a}', action),
-      text: store.state.strings.vue_notification_text_action_fail.replace('{$a}', action),
+      title: store.state.strings.vuenotificationtitleactionfail.replace('{$a}', action),
+      text: store.state.strings.vuenotificationtextactionfail.replace('{$a}', action),
       type: 'warn'
     });
   }
-} 
+}
 
 const editAll = () => {
   emit('checkAll', selectAllChecked.value)

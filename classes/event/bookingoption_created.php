@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-
 /**
  * The bookingoption_created event.
  *
@@ -53,7 +52,7 @@ class bookingoption_created extends \core\event\base {
      *
      */
     public static function get_name() {
-        return get_string('bookingoption_created', 'booking');
+        return get_string('bookingoptioncreated', 'booking');
     }
 
     /**

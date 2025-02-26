@@ -47,12 +47,24 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class campaign_blockbooking implements bo_condition {
-
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_CAMPAIGN_BLOCKBOOKING;
 
     /** @var string $blockinglabel String to display when blocking. */
     private $blockinglabel = '';
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = true;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -85,7 +97,7 @@ class campaign_blockbooking implements bo_condition {
         // This is the return value. Not available to begin with.
         $isavailable = true;
 
-        $result = booking_option::is_blocked_by_campaign($settings);
+        $result = booking_option::is_blocked_by_campaign($settings, $userid);
 
         if ($result['status']) {
             $isavailable = false;
@@ -98,6 +110,18 @@ class campaign_blockbooking implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -188,8 +212,13 @@ class campaign_blockbooking implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
         if (empty($this->blockinglabel)) {
             // We register the blockinglabel via this function.
@@ -210,6 +239,14 @@ class campaign_blockbooking implements bo_condition {
      * @return string
      */
     private function get_description_string(bool $isavailable, bool $full, booking_option_settings $settings) {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
         if ($isavailable) {
             $description = '';
         } else {

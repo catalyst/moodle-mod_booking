@@ -24,10 +24,10 @@
 
 namespace mod_booking\option\fields;
 
-use core_course_external;
 use mod_booking\booking_option_settings;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
+use mod_booking\utils\wb_payment;
 use MoodleQuickForm;
 use stdClass;
 
@@ -42,7 +42,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class coursestarttime extends field_base {
-
     /**
      * This ID is used for sorting execution.
      * @var int
@@ -61,7 +60,7 @@ class coursestarttime extends field_base {
      * This identifies the header under which this particular field should be displayed.
      * @var string
      */
-    public static $header = MOD_BOOKING_HEADER_GENERAL;
+    public static $header = MOD_BOOKING_HEADER_DATES;
 
     /**
      * An int value to define if this field is standard or used in a different context.
@@ -82,24 +81,6 @@ class coursestarttime extends field_base {
     public static $incompatiblefields = [];
 
     /**
-     * This function interprets the value from the form and, if useful...
-     * ... relays it to the new option class for saving or updating.
-     * @param stdClass $formdata
-     * @param stdClass $newoption
-     * @param int $updateparam
-     * @param mixed $returnvalue
-     * @return string // If no warning, empty string.
-     */
-    public static function prepare_save_field(
-        stdClass &$formdata,
-        stdClass &$newoption,
-        int $updateparam,
-        $returnvalue = null): string {
-
-        return '';
-    }
-
-    /**
      * This function adds error keys for form validation.
      * @param array $data
      * @param array $files
@@ -112,14 +93,27 @@ class coursestarttime extends field_base {
     }
 
     /**
-     * Instance form definition
-     * @param MoodleQuickForm $mform
-     * @param array $formdata
-     * @param array $optionformconfig
-     * @return void
+     * This function interprets the value from the form and, if useful...
+     * ... relays it to the new option class for saving or updating.
+     * @param stdClass $formdata
+     * @param stdClass $newoption
+     * @param int $updateparam
+     * @param ?mixed $returnvalue
+     * @return array // If no warning, empty array.
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
-
+    public static function prepare_save_field(
+        stdClass &$formdata,
+        stdClass &$newoption,
+        int $updateparam,
+        $returnvalue = null
+    ): array {
+        if (!empty($formdata->selflearningcourse)) {
+            /* For self-learning courses we store the sorting date (in field coursestarttime)
+            as both coursestarttime and courseendtime. */
+            $newoption->coursestarttime = $formdata->coursestarttime ?? 0;
+            $newoption->courseendtime = $formdata->coursestarttime ?? 0;
+        }
+        return [];
     }
 
     /**
@@ -127,9 +121,77 @@ class coursestarttime extends field_base {
      * @param stdClass $data
      * @param booking_option_settings $settings
      * @return void
-     * @throws \dml_exception
+     * @throws dml_exception
      */
     public static function set_data(stdClass &$data, booking_option_settings $settings) {
+        if (!empty($settings->selflearningcourse)) {
+            parent::set_data($data, $settings);
+        } else {
+            return;
+        }
+    }
 
+    /**
+     * Instance form definition
+     * @param MoodleQuickForm $mform
+     * @param array $formdata
+     * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
+     * @return void
+     */
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
+        global $CFG;
+        // Standardfunctionality to add a header to the mform (only if its not yet there).
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
+
+        // Check if config setting for self-learning courses is active.
+        if (wb_payment::pro_version_is_activated()) {
+            $selflearningcourseactive = (int)get_config('booking', 'selflearningcourseactive');
+        } else {
+            $selflearningcourseactive = 0;
+        }
+
+        $selflearningcourselabel = get_string('selflearningcourse', 'mod_booking');
+        // The label can be overwritten in plugin config.
+        if (!empty(get_config('booking', 'selflearningcourselabel'))) {
+            $selflearningcourselabel = get_config('booking', 'selflearningcourselabel');
+        }
+
+        if ($selflearningcourseactive === 1) {
+            $mform->addElement(
+                'static',
+                'selflearningcoursecoursestarttimealert',
+                '',
+                '<div class="alert alert-light">' .
+                    get_string('selflearningcoursecoursestarttimealert', 'mod_booking', $selflearningcourselabel) .
+                '</div>'
+            );
+            $mform->hideIf('selflearningcoursecoursestarttimealert', 'selflearningcourse', 'neq', 1);
+        }
+
+        $mform->addElement(
+            'date_time_selector',
+            'coursestarttime',
+            get_string('selflearningcoursecoursestarttime', 'mod_booking')
+        );
+        $mform->setType('coursestarttime', PARAM_INT);
+        $mform->addHelpButton(
+            'coursestarttime',
+            'selflearningcoursecoursestarttime',
+            'mod_booking',
+            '',
+            false,
+            $selflearningcourselabel
+        );
+        $mform->hideIf('coursestarttime', 'selflearningcourse', 'neq', 1);
     }
 }

@@ -18,6 +18,7 @@ Feature: Configure and use booking's pagination and perform filtering - as a tea
       | admin1   | C1     | manager        |
       | student1 | C1     | student        |
       | student2 | C1     | student        |
+    And I clean booking cache
     And the following "activities" exist:
       | activity | course | name       | intro                  | bookingmanager | eventtype | Default view for booking options | Send confirmation e-mail |
       | booking  | C1     | My booking | My booking description | teacher1       | Webinar   | All bookings                     | Yes                      |
@@ -48,7 +49,7 @@ Feature: Configure and use booking's pagination and perform filtering - as a tea
     And I should not see "Booking Option 4" in the ".allbookingoptionstable" "css_element"
     And I should not see "Booking Option 5" in the ".allbookingoptionstable" "css_element"
     ## Goto page 2
-    And I click on "2" "link" in the ".allbookingoptionstable .pagination" "css_element"
+    And I click on "2" "text" in the ".allbookingoptionstable .pagination" "css_element"
     And I should see "Booking Option 4" in the ".allbookingoptionstable_r1" "css_element"
     And I should see "Booking Option 5" in the ".allbookingoptionstable_r2" "css_element"
 

@@ -16,10 +16,8 @@
 
 namespace mod_booking\booking_rules\actions;
 
-use mod_booking\booking_rules\booking_rule;
 use mod_booking\booking_rules\booking_rule_action;
 use mod_booking\placeholders\placeholders_info;
-use mod_booking\singleton_service;
 use mod_booking\task\send_mail_by_rule_adhoc;
 use MoodleQuickForm;
 use stdClass;
@@ -70,15 +68,6 @@ class send_mail implements booking_rule_action {
         $jsonobject = json_decode($json);
         $actiondata = $jsonobject->actiondata;
 
-        if (!empty($jsonobject->datafromevent)) {
-            $datafromevent = $jsonobject->datafromevent;
-            /* If the template contains the {eventdescription} placeholder,
-            we replace it here, because we have the eventdescription in the $datafromevent
-            which is part of the JSON. */
-            $actiondata->template = str_replace('{eventdescription}', $datafromevent->eventdescription ?? "",
-                $actiondata->template);
-        }
-
         $this->subject = $actiondata->subject;
         $this->template = $actiondata->template;
     }
@@ -113,7 +102,7 @@ class send_mail implements booking_rule_action {
      * @return string the name of the rule action
      */
     public function get_name_of_action($localized = true) {
-        return get_string('send_mail', 'mod_booking');
+        return get_string('sendmail', 'mod_booking');
     }
 
     /**
@@ -185,6 +174,9 @@ class send_mail implements booking_rule_action {
             'cmid' => $record->cmid,
             'customsubject' => $this->subject,
             'custommessage' => $this->template,
+            'installmentnr' => $record->payment_id ?? 0,
+            'duedate' => $record->datefield ?? 0,
+            'price' => $record->price ?? 0,
         ];
         $task->set_custom_data($taskdata);
         $task->set_userid($record->userid);

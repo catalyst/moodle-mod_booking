@@ -28,6 +28,7 @@ use mod_booking\bo_availability\bo_info;
 use mod_booking\booking_option_settings;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
+use mod_booking\singleton_service;
 use MoodleQuickForm;
 use stdClass;
 
@@ -39,7 +40,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class availability extends field_base {
-
     /**
      * This ID is used for sorting execution.
      * @var int
@@ -72,6 +72,8 @@ class availability extends field_base {
      */
     public static $alternativeimportidentifiers = [
         'boavenrolledincourse',
+        'boavenrolledincohorts',
+        'bo_cond_customform_restrict',
     ];
 
     /**
@@ -91,21 +93,29 @@ class availability extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null
+    ): array {
 
         // Save the additional JSON conditions (the ones which have been added to the mform).
         bo_info::save_json_conditions_from_form($formdata);
+        // As availability class can be used without also calling bookingopening and -closing time, we need to call them here.
+        bookingopeningtime::prepare_save_field($formdata, $newoption, $updateparam);
+        bookingclosingtime::prepare_save_field($formdata, $newoption, $updateparam);
 
         $newoption->availability = $formdata->availability;
+        if (empty($newoption->sqlfilter)) {
+            $newoption->sqlfilter = $formdata->sqlfilter;
+        }
 
-        return '';
+        $instance = new availability();
+        return $instance->check_for_changes($formdata, $instance);
     }
 
     /**
@@ -113,13 +123,21 @@ class availability extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         $optionid = $formdata['id'];
 
-        // TODO: expert/simple mode needs to work with this too!
+        // Todo: expert/simple mode needs to work with this too!
         // Add availability conditions.
         bo_info::add_conditions_to_mform($mform, $optionid);
     }
@@ -146,10 +164,9 @@ class availability extends field_base {
 
             // On importing, we support the boavenrolledincourse key.
             if (!empty($data->boavenrolledincourse)) {
-
                 $items = explode(',', $data->boavenrolledincourse);
 
-                list($inorequal, $params) = $DB->get_in_or_equal($items, SQL_PARAMS_NAMED);
+                [$inorequal, $params] = $DB->get_in_or_equal($items, SQL_PARAMS_NAMED);
                 $sql = "SELECT id
                         FROM {course}
                         WHERE shortname $inorequal";
@@ -163,14 +180,86 @@ class availability extends field_base {
                 unset($data->boavenrolledincourse);
                 unset($data->boavenrolledincourseoperator);
             }
+            // We do the some for the boavenrolledincohorts key.
+            if (!empty($data->boavenrolledincohorts)) {
+                $items = explode(',', $data->boavenrolledincohorts);
+                [$inorequal, $params] = $DB->get_in_or_equal($items, SQL_PARAMS_NAMED);
+                $sql = "SELECT id
+                        FROM {cohort}
+                        WHERE idnumber $inorequal";
+                $cohorts = $DB->get_records_sql($sql, $params);
+
+                $data->bo_cond_enrolledincohorts_cohortids = array_keys($cohorts);
+                $data->bo_cond_enrolledincohorts_restrict = 1;
+                // The operator defaults to "OR", but can be set via the boavenrolledincourseoperator column.
+                $data->bo_cond_enrolledincohorts_cohortids_operator = $data->boavenrolledincohortsoperator ?? 'OR';
+                unset($data->boavenrolledincohorts);
+                unset($data->boavenrolledincohortsoperator);
+            }
         } else {
             $availability = $settings->availability ?? "{}";
+            bookingopeningtime::set_data($data, $settings);
+            bookingclosingtime::set_data($data, $settings);
         }
 
         if (!empty($availability)) {
             $jsonobject = json_decode($availability);
             bo_info::set_defaults($data, $jsonobject);
         }
+    }
 
+    /**
+     * Check if there is a difference between the former and the new values of the formdata.
+     *
+     * @param stdClass $formdata
+     * @param field_base $self
+     * @param mixed $mockdata // Only needed if there the object needs params for the save_data function.
+     * @param string $key
+     * @param mixed $value
+     *
+     * @return array
+     *
+     */
+    public function check_for_changes(
+        stdClass $formdata,
+        field_base $self,
+        $mockdata = '',
+        string $key = '',
+        $value = ''
+    ): array {
+
+        $changes = [];
+
+        $excludeclassesfromtrackingchanges = MOD_BOOKING_CLASSES_EXCLUDED_FROM_CHANGES_TRACKING;
+
+        $classname = fields_info::get_class_name(static::class);
+        if (in_array($classname, $excludeclassesfromtrackingchanges)) {
+            return $changes;
+        }
+
+        $settings = singleton_service::get_instance_of_booking_option_settings(
+            $formdata->optionid ?? $formdata->id
+        );
+
+        if ($settings->availability != $formdata->availability) {
+            $changes = [
+                'changes' => [
+                    'fieldname' => 'availability',
+                ],
+            ];
+        }
+        return $changes;
+    }
+
+    /**
+     * This function adds error keys for form validation.
+     * @param array $data
+     * @param array $files
+     * @param array $errors
+     * @return array
+     */
+    public static function validation(array $data, array $files, array &$errors) {
+        bo_info::validation($data, $files, $errors);
+        return $errors;
     }
 }

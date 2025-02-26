@@ -140,8 +140,28 @@
 
 <div class="container-fluid">
     <div class="row">
+        <div class="col-md-12 d-flex mb-3">
+            <!-- Left Button -->
+            <span class="spanhidemobile">
+            {{#returnurl}}
+                <a href="{{returnurl}}" role="button" class="btn mr-auto d-flex justify-content-start align-items-center">
+                    <i class="fa-solid fa-arrow-left smallericon" style="margin-right: 8px"></i>
+                    {{#str}} back, mod_booking {{/str}}
+                </a>
+            {{/returnurl}}
+            </span>
+            <!-- Right Button -->
+            {{#editurl}}
+                <a href="{{editurl}}" role="button" class="btn btn-light ml-auto">
+                    <i class="fa-solid fa-pen smallericon" style="margin-right: 8px"></i>
+                    {{#str}} edit {{/str}}
+                </a>
+            {{/editurl}}
+        </div>
+    </div>
+    <div class="row mod-booking-row">
         <div class="col-md-7">
-            <h2 class="title" >{{#titleprefix}}{{.}} - {{/titleprefix}}{{title}}</h2>
+            <h2 class="title" >{{{title}}}</h2>
             {{#invisible}}
                 <div class="booking-option-info-invisible">{{#str}} invisibleoption, mod_booking {{/str}}</div>
             {{/invisible}}
@@ -149,6 +169,7 @@
                 {{sport}}
             </h6>
             {{#description}}<div class="content"><p>{{{.}}}</p></div>{{/description}}
+            {{#optionviewcustomfields}}{{{.}}}{{/optionviewcustomfields}}
             {{#attachments}}{{{.}}}{{/attachments}}
             {{> mod_booking/bookingoption_description_teachers }}
             {{#datesexist}}
@@ -179,11 +200,26 @@
                     </div>
                 </div>
             {{/datesexist}}
+            {{#selflearningcourseshowdurationinfo}}
+                <div>
+                    <i class="fa fa-fw fa-clock-o" aria-hidden="true"></i>&nbsp;
+                    {{^timeremaining}}
+                        {{#str}}selflearningcoursedurationinfo, mod_booking, {{duration}}{{/str}}
+                    {{/timeremaining}}
+                    {{#timeremaining}}
+                        {{#str}}selflearningcoursetimeremaininginfo, mod_booking, {{timeremaining}}{{/str}}
+                    {{/timeremaining}}
+                </div>
+            {{/selflearningcourseshowdurationinfo}}
+            {{#selflearningcourseshowdurationinfoexpired}}
+                <i class="fa fa-fw fa-clock-o" aria-hidden="true"></i>&nbsp;
+                {{#str}} selflearningcoursetimeremaininginfoexpired, booking {{/str}}
+            {{/selflearningcourseshowdurationinfoexpired}}
         </div>
         <div class="col-md-5">
             <div class="card price-card">
                 {{#imageurl}}
-                <img class="w-100" src="{{imageurl}}" alt="{{title}}">
+                <img class="w-100" src="{{imageurl}}" alt="{{{title}}}">
                 {{/imageurl}}
                 {{{ bookitsection }}}
                 <div class="card-body">
@@ -273,6 +309,19 @@
                             </div>
                         </li>
                         {{/minanswers}}
+                        {{#canceluntil}}
+                        <li>
+                            <div class="col-ap-canceluntilinfo">
+                                <span><i class="fa fa-fw fa-sign-out" aria-hidden="true"></i></span>
+                                {{#canstillbecancelled}}
+                                    {{#str}}bookingoptioncanbecancelleduntil, mod_booking, {{canceluntil}}{{/str}}
+                                {{/canstillbecancelled}}
+                                {{^canstillbecancelled}}
+                                    {{#str}}bookingoptioncantbecancelledanymore, mod_booking, {{canceluntil}}{{/str}}
+                                {{/canstillbecancelled}}
+                            </div>
+                        </li>
+                        {{/canceluntil}}
                         {{/bookinginformation}}
                     </ul>
                 </div>

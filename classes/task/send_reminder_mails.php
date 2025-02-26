@@ -32,6 +32,7 @@ use mod_booking\event\reminder2_sent;
 use mod_booking\event\reminder_teacher_sent;
 use mod_booking\singleton_service;
 use stdClass;
+use Throwable;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -54,7 +55,7 @@ class send_reminder_mails extends \core\task\scheduled_task {
      *
      */
     public function get_name() {
-        return get_string('task_send_reminder_mails', 'mod_booking');
+        return get_string('tasksendremindermails', 'mod_booking');
     }
 
     /**
@@ -68,6 +69,11 @@ class send_reminder_mails extends \core\task\scheduled_task {
         $now = time();
 
         mtrace("run send_reminder_mails task");
+
+        if (empty(get_config('booking', 'uselegacymailtemplates'))) {
+            mtrace("Legacy mails are turned off, this task should be deactivated.");
+            return;
+        }
 
         $toprocess = $DB->get_records_sql(
            'SELECT bo.id optionid, bo.bookingid, bo.coursestarttime, b.daystonotify, b.daystonotify2, bo.sent, bo.sent2
@@ -223,7 +229,12 @@ class send_reminder_mails extends \core\task\scheduled_task {
             $bookingid = $record->bookingid;
             $cm = get_coursemodule_from_instance('booking', $bookingid);
             $cmid = $cm->id;
-            $bookingoption = singleton_service::get_instance_of_booking_option($cmid, $optionid);
+            try {
+                $bookingoption = singleton_service::get_instance_of_booking_option($cmid, $optionid);
+            } catch (Throwable $e) {
+                // If the bookingoption doesn't exist anymore, we just abort the task.
+                return true;
+            }
 
             switch ($messageparam) {
                 case MOD_BOOKING_MSGPARAM_SESSIONREMINDER:

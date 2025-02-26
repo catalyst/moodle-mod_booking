@@ -54,6 +54,7 @@
     data-componentname="mod_booking"
     data-area="{{area}}"
     data-userid="{{userid}}"
+    data-results="{{results}}"
     {{#dataaction}}data-action="{{dataaction}}"{{/dataaction}}
     {{#nojs}}data-nojs="1"{{/nojs}}>
     {{#onlist}}
@@ -69,9 +70,16 @@
         </div>
     {{/top}}
     {{#main}}
-        <div class="booking-button-mainarea p-1 {{class}}" role="{{role}}">
-            {{{label}}}
-        </div>
+        {{#link}}
+            <a class="booking-button-mainarea p-1 {{class}}" role="{{role}}" href="{{link}}" data-action="bookondetail">
+                {{{label}}}
+            </a>
+        {{/link}}
+        {{^link}}
+            <div class="booking-button-mainarea p-1 {{class}}" role="{{role}}">
+                {{{label}}}
+            </div>
+        {{/link}}
     {{/main}}
     {{#sub}}
         <div class="booking-button-subarea h6 mb-1 mt-1 p-1 {{class}}" role="{{role}}">

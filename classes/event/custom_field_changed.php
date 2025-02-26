@@ -13,6 +13,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
 /**
  * The custom field changed event.
  *
@@ -48,7 +49,7 @@ class custom_field_changed extends \core\event\base {
      * @return string
      */
     public static function get_name() {
-        return get_string('custom_field_changed', 'mod_booking');
+        return get_string('customfieldchanged', 'mod_booking');
     }
 
     /**

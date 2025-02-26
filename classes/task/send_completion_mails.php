@@ -48,7 +48,7 @@ class send_completion_mails extends \core\task\adhoc_task {
      * @throws \coding_exception
      */
     public function get_name() {
-        return get_string('task_send_completion_mails', 'mod_booking');
+        return get_string('tasksendcompletionmails', 'mod_booking');
     }
 
     /**
@@ -61,6 +61,11 @@ class send_completion_mails extends \core\task\adhoc_task {
      */
     public function execute() {
 
+        if (empty(get_config('booking', 'uselegacymailtemplates'))) {
+            mtrace("Legacy mails are turned off, this task should be deactivated.");
+            return;
+        }
+
         $taskdata = $this->get_custom_data();
 
         mtrace('send_completion_mails task: sending completion mail to user with id: ' . $taskdata->userid);
@@ -70,7 +75,7 @@ class send_completion_mails extends \core\task\adhoc_task {
             // Use message controller to send the completion message.
             $messagecontroller = new message_controller(
                 MOD_BOOKING_MSGCONTRPARAM_SEND_NOW, MOD_BOOKING_MSGPARAM_COMPLETED,
-                $taskdata->cmid, null, $taskdata->optionid, $taskdata->userid
+                $taskdata->cmid, $taskdata->optionid, $taskdata->userid, null
             );
 
             if ($messagecontroller->send_or_queue()) {

@@ -18,11 +18,14 @@ namespace mod_booking;
 
 use context_module;
 use context_system;
+use context_user;
+use html_writer;
 use local_entities\entitiesrelation_handler;
 use mod_booking\bo_availability\bo_subinfo;
 use mod_booking\bo_availability\conditions\subbooking;
 use mod_booking\booking_campaigns\campaigns_info;
 use mod_booking\customfield\booking_handler;
+use mod_booking\option\dates_handler;
 use mod_booking\subbookings\subbookings_info;
 use mod_booking\booking_campaigns\booking_campaign;
 use moodle_exception;
@@ -38,11 +41,14 @@ use moodle_url;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class booking_option_settings {
-
     /** @var int $id The ID of the booking option. */
     public $id = null;
 
-    /** @var int $bookingid */
+    /**
+     * Id of booking instance
+     *
+     * @var int
+     */
     public $bookingid = null;
 
     /** @var int $cmid */
@@ -189,6 +195,9 @@ class booking_option_settings {
     /** @var array $customfields */
     public $customfields = [];
 
+    /** @var array $customfieldsfortemplates */
+    public $customfieldsfortemplates = [];
+
     /** @var string $editoptionurl */
     public $editoptionurl = null;
 
@@ -268,7 +277,16 @@ class booking_option_settings {
     public $waitforconfirmation = 0;
 
     /** @var int $useprice flag that indicates if we use price or not */
-    public $useprice = null;
+    public $useprice = 0;
+
+    /** @var int $selflearningcourse flag marks courses with duration but no optiondates */
+    public $selflearningcourse = 0;
+
+    /** @var int $sqlfilter defines if an element should be hidden via sql filter. hidden > 0 */
+    public $sqlfilter = 0;
+
+    /** @var array $attachedfiles The links on the attached files */
+    public $attachedfiles = [];
 
     /**
      * Constructor for the booking option settings class.
@@ -276,10 +294,10 @@ class booking_option_settings {
      * This permits performance increase, because we can request all the records once and then
      *
      * @param int $optionid Booking option id.
-     * @param stdClass $dbrecord of bookig option.
+     * @param stdClass|null $dbrecord of bookig option.
      * @throws dml_exception
      */
-    public function __construct(int $optionid, stdClass $dbrecord = null) {
+    public function __construct(int $optionid, ?stdClass $dbrecord = null) {
 
         // Even if we have a record, we still get the cache...
         // Because in the cache, we have also information from other tables.
@@ -317,7 +335,7 @@ class booking_option_settings {
      * @param object|null $dbrecord
      * @return stdClass|null
      */
-    private function set_values(int $optionid, object $dbrecord = null) {
+    private function set_values(int $optionid, ?object $dbrecord = null) {
         global $DB;
 
         if (empty($optionid)) {
@@ -326,13 +344,13 @@ class booking_option_settings {
 
         // If we don't get the cached object, we have to fetch it here.
         if ($dbrecord === null) {
-
             $params['id'] = $optionid;
             $sql = "SELECT cm.id
                     FROM {booking_options} bo
                     JOIN {course_modules} cm ON bo.bookingid=cm.instance
                     JOIN {modules} m ON m.id=cm.module
                     WHERE m.name='booking'
+
                     AND bo.id=:id";
             $cmid = $DB->get_field_sql($sql, $params);
 
@@ -342,8 +360,15 @@ class booking_option_settings {
                 $context = context_system::instance();
             }
 
-            list($select, $from, $where, $params) = booking::get_options_filter_sql(null, 1, null, '*',
-                $context, [], ['id' => $optionid]);
+            [$select, $from, $where, $params] = booking::get_options_filter_sql(
+                null,
+                1,
+                null,
+                '*',
+                $context,
+                [],
+                ['id' => $optionid]
+            );
 
             $sql = "SELECT $select
                     FROM $from
@@ -402,6 +427,7 @@ class booking_option_settings {
             $this->availability = $dbrecord->availability;
             $this->status = $dbrecord->status;
             $this->responsiblecontact = $dbrecord->responsiblecontact;
+            $this->sqlfilter = $dbrecord->sqlfilter;
 
             // If we have a responsible contact id, we load the corresponding user object.
             if (!isset($dbrecord->responsiblecontactuser)) {
@@ -445,13 +471,16 @@ class booking_option_settings {
                 $this->boactions = [];
                 $this->canceluntil = 0;
                 $this->useprice = null; // Important: Use null as default so it will also work with old DB records.
+                $this->selflearningcourse = 0;
             }
 
             // If the course module id (cmid) is not yet set, we load it. //TODO: bookingid 0 bei option templates berücksichtigen!!
             if (!isset($dbrecord->cmid)) {
                 $cm = get_coursemodule_from_instance('booking', $dbrecord->bookingid);
+
                 if (!$cm) {
                     // Set cmid to 0 for option templates as they are set globally (not only for one instance).
+
                     $this->cmid = 0;
                     $dbrecord->cmid = 0;
                 } else {
@@ -460,6 +489,13 @@ class booking_option_settings {
                 }
             } else {
                 $this->cmid = $dbrecord->cmid;
+            }
+
+            if (!isset($dbrecord->attachedfiles)) {
+                $this->load_attachments($dbrecord);
+                $dbrecord->attachedfiles = !empty($this->attachedfiles) ? $this->attachedfiles : [];
+            } else {
+                $this->attachedfiles = $dbrecord->attachedfiles;
             }
 
             // If the key "editoptionurl" is not yet set, we need to generate it.
@@ -536,8 +572,10 @@ class booking_option_settings {
             if (!isset($dbrecord->customfields)) {
                 $this->load_customfields($optionid);
                 $dbrecord->customfields = $this->customfields;
+                $dbrecord->customfieldsfortemplates = $this->customfieldsfortemplates ?? [];
             } else {
                 $this->customfields = $dbrecord->customfields;
+                $this->customfieldsfortemplates = $dbrecord->customfieldsfortemplates ?? [];
             }
 
             // If a cost center is defined in plugin settings, we load it directly into the booking option settings.
@@ -573,18 +611,26 @@ class booking_option_settings {
                 $this->electivecombinations = $dbrecord->electivecombinations;
             }
 
+            // phpcs:ignore moodle.Commenting.TodoComment.MissingInfoInline
             // TODO: This is a performance problem. We need to cache campaigns!
+            // phpcs:ignore moodle.Commenting.TodoComment.MissingInfoInline
             // TODO: We need to cache get_all_campaigns too!
             // Check if there are active campaigns.
             // If yes, we need to apply the booking limit factor.
             if (!isset($dbrecord->campaignisset)) {
                 $campaigns = campaigns_info::get_all_campaigns();
                 foreach ($campaigns as $camp) {
-                    /** @var booking_campaign $campaign */
-                    $campaign = $camp;
-                    if ($campaign->campaign_is_active($this->id, $this)) {
-
-                        $campaign->apply_logic($this, $dbrecord);
+                    try {
+                        /** @var booking_campaign $campaign */
+                        $campaign = $camp;
+                        if ($campaign->campaign_is_active($this->id, $this)) {
+                            $campaign->apply_logic($this, $dbrecord);
+                        }
+                    } catch (\Exception $e) {
+                        global $CFG;
+                        if ($CFG->debug = (E_ALL)) {
+                            throw $e;
+                        }
                     }
                 }
                 // Campaigns have been applied - let's cache a flag so we do not do it again.
@@ -610,25 +656,26 @@ class booking_option_settings {
     private function load_sessions_from_db(int $optionid) {
         global $DB;
         // Multi-sessions.
-        if (!$this->sessions = $DB->get_records_sql(
-            "SELECT id, id optiondateid, coursestarttime, courseendtime, daystonotify
+        if (
+            !$this->sessions = $DB->get_records_sql(
+                "SELECT id, id optiondateid, coursestarttime, courseendtime, daystonotify
             FROM {booking_optiondates}
             WHERE optionid = ?
-            ORDER BY coursestarttime ASC", [$optionid])) {
-
+            ORDER BY coursestarttime ASC",
+                [$optionid]
+            )
+        ) {
             // If there are no multisessions, but we still have the option's ...
             // ... coursestarttime and courseendtime, then store them as if they were a session.
             if (!empty($this->coursestarttime) && !empty($this->courseendtime)) {
-
-                // Days to notify comes from the booking instance.
-
                 $bookingsettings = singleton_service::get_instance_of_booking_settings_by_bookingid($this->bookingid);
 
-                $singlesession = new stdClass;
+                $singlesession = new stdClass();
                 $singlesession->id = 0;
                 $singlesession->coursestarttime = $this->coursestarttime;
                 $singlesession->courseendtime = $this->courseendtime;
-                $singlesession->daystonotify = $bookingsettings->daystonotify ?? 0;
+                // We don't take the daystonotify value from the booking instance anymore, as this led to confusion.
+                $singlesession->daystonotify = 0;
                 $this->sessions[] = $singlesession;
             } else {
                 // Else we have no sessions.
@@ -657,10 +704,35 @@ class booking_option_settings {
         global $DB;
 
         $teachers = $DB->get_records_sql(
-            'SELECT DISTINCT t.userid, u.firstname, u.lastname, u.email, u.institution
+            "SELECT DISTINCT
+                        t.userid,
+                        u.firstname,
+                        u.lastname,
+                        u.email,
+                        u.institution,
+                        u.description,
+                        u.descriptionformat,
+                        u.username
                     FROM {booking_teachers} t
                LEFT JOIN {user} u ON t.userid = u.id
-                   WHERE t.optionid = :optionid', ['optionid' => $this->id]);
+                   WHERE t.optionid = :optionid",
+            ['optionid' => $this->id]
+        );
+
+        foreach ($teachers as $key => $teacher) {
+            $context = context_user::instance($teacher->userid, MUST_EXIST);
+            $descriptiontext = file_rewrite_pluginfile_urls(
+                $teacher->description,
+                'pluginfile.php',
+                $context->id,
+                'user',
+                'profile',
+                null,
+            );
+
+            $teachers[$key]->description = $descriptiontext;
+            $teachers[$key]->descriptionformat = $teacher->descriptionformat;
+        }
 
         $this->teachers = $teachers;
     }
@@ -682,7 +754,9 @@ class booking_option_settings {
         global $DB;
 
         $teacherids = $DB->get_fieldset_select(
-            'booking_teachers', 'userid', "optionid = :optionid",
+            'booking_teachers',
+            'userid',
+            "optionid = :optionid",
             ['optionid' => $this->id]
         );
 
@@ -703,9 +777,16 @@ class booking_option_settings {
         }
 
         $data = [];
-        foreach ($this->teachers as $teacher) {
-            $t['firstname'] = $teacher->firstname;
-            $t['lastname'] = $teacher->lastname;
+        $teachers = array_values($this->teachers);
+        // Set 'notlast' flag if it's the last item. We need this for the template.
+        $lastindex = count($teachers) - 1;
+
+        foreach ($teachers as $index => $teacher) {
+            $t = [
+                'firstname' => $teacher->firstname,
+                'lastname' => $teacher->lastname,
+                'notlast' => ($index != $lastindex) ? 1 : 0,
+            ];
             $data['teachers'][] = $t;
         }
 
@@ -723,8 +804,8 @@ class booking_option_settings {
     private function generate_editoption_url(int $optionid) {
 
         if (!empty($this->cmid) && !empty($optionid)) {
-
             /* IMPORTANT NOTICE: We CANNOT use new moodle_url here, as it is already used in the
+
             add_return_url function of the booking_option_settings class. */
             $this->editoptionurl = "/mod/booking/editoptions.php?id=" . $this->cmid . "&optionid=" . $optionid;
         }
@@ -739,9 +820,10 @@ class booking_option_settings {
         global $CFG;
 
         if (!empty($this->cmid) && !empty($optionid)) {
-
-            $manageresponsesmoodleurl = new moodle_url('/mod/booking/report.php',
-                ['id' => $this->cmid, 'optionid' => $optionid]);
+            $manageresponsesmoodleurl = new moodle_url(
+                '/mod/booking/report.php',
+                ['id' => $this->cmid, 'optionid' => $optionid]
+            );
 
             // Use html_entity_decode to convert "&amp;" to a simple "&" character.
             if ($CFG->version >= 2023042400) {
@@ -763,8 +845,10 @@ class booking_option_settings {
         global $CFG;
 
         if (!empty($this->cmid) && !empty($optionid)) {
-            $optiondatesteachersmoodleurl = new moodle_url('/mod/booking/optiondates_teachers_report.php',
-                ['cmid' => $this->cmid, 'optionid' => $optionid]);
+            $optiondatesteachersmoodleurl = new moodle_url(
+                '/mod/booking/optiondates_teachers_report.php',
+                ['cmid' => $this->cmid, 'optionid' => $optionid]
+            );
 
             // Use html_entity_decode to convert "&amp;" to a simple "&" character.
             if ($CFG->version >= 2023042400) {
@@ -790,20 +874,20 @@ class booking_option_settings {
 
         $imgfile = null;
         // Let's check if an image has been uploaded for the option.
-        if ($imgfile = $DB->get_record_sql("SELECT id, contextid, filepath, filename
+        if (
+            $imgfile = $DB->get_record_sql("SELECT id, contextid, filepath, filename
                                  FROM {files}
                                  WHERE component = 'mod_booking'
                                  AND itemid = :optionid
                                  AND filearea = 'bookingoptionimage'
                                  AND filesize > 0
-                                 AND source is not null", ['optionid' => $optionid])) {
-
+                                 AND source is not null", ['optionid' => $optionid], IGNORE_MULTIPLE)
+        ) {
             // If an image has been uploaded for the option, let's create the according URL.
             $this->imageurl = $CFG->wwwroot . "/pluginfile.php/" . $imgfile->contextid .
                 "/mod_booking/bookingoptionimage/" . $optionid . $imgfile->filepath . $imgfile->filename;
 
             return;
-
         } else {
             // Fix: Option templates have bookingid 0 as they are global and not instance-specific.
             if (empty($bookingid)) {
@@ -816,13 +900,17 @@ class booking_option_settings {
             $customfieldid = $bookingsettings->bookingimagescustomfield;
 
             if (!empty($customfieldid)) {
-                $customfieldvalue = $DB->get_field('customfield_data', 'value',
-                    ['fieldid' => $customfieldid, 'instanceid' => $optionid]);
+                $customfieldvalue = $DB->get_field(
+                    'customfield_data',
+                    'value',
+                    ['fieldid' => $customfieldid, 'instanceid' => $optionid]
+                );
 
                 if (!empty($customfieldvalue)) {
                     $customfieldvalue = strtolower($customfieldvalue);
 
-                    if (!$imgfiles = $DB->get_records_sql("SELECT id, contextid, filepath, filename
+                    if (
+                        !$imgfiles = $DB->get_records_sql("SELECT id, contextid, filepath, filename
                                  FROM {files}
                                  WHERE component = 'mod_booking'
                                  AND itemid = :bookingid
@@ -831,7 +919,8 @@ class booking_option_settings {
                                  AND filesize > 0
                                  AND source is not null", ['bookingid' => $bookingid,
                                     'customfieldvaluewithextension' => "$customfieldvalue.%",
-                                    ])) {
+                                    ])
+                    ) {
                         return;
                     }
 
@@ -880,19 +969,35 @@ class booking_option_settings {
      * @param int $optionid
      */
     private function load_customfields(int $optionid) {
+        global $DB;
+
         $handler = booking_handler::create();
 
         $datas = $handler->get_instance_data($optionid, true);
 
         foreach ($datas as $data) {
-
-            $getfield = $data->get_field();
-            $shortname = $getfield->get('shortname');
-
+            $field = $data->get_field();
+            $shortname = $field->get('shortname');
+            $label = $field->get('name');
+            $type = $field->get('type');
+            $fieldid = $field->get('id');
             $value = $data->get_value();
 
             if (!empty($value)) {
                 $this->customfields[$shortname] = $value;
+
+                if ($type === 'select') {
+                    $options = singleton_service::get_customfields_select_options($fieldid);
+                    $value = $options[$value];
+                }
+
+                // We also return the customfieldsfortemplates where we get the real values of the selects.
+                $this->customfieldsfortemplates[$shortname] = [
+                    'label' => $label,
+                    'key' => $shortname,
+                    'value' => $value,
+                    'type' => $type,
+                ];
             }
         }
     }
@@ -914,6 +1019,9 @@ class booking_option_settings {
                 'name' => $data->name,
                 'shortname' => $data->shortname,
                 'parentname' => $data->parentname,
+                'description' => $data->description ?? "",
+                'maplink' => $data->maplink,
+                'mapembed' => $data->mapembed,
             ];
         }
     }
@@ -975,19 +1083,66 @@ class booking_option_settings {
                 $dbrecord->useprice = $this->useprice;
             }
 
-            // Useprice flag indicates if the booking option uses a price.
             if (!empty($this->jsonobject->waitforconfirmation)) {
                 $this->waitforconfirmation = (int)$this->jsonobject->waitforconfirmation;
                 $this->jsonobject->waitforconfirmation = $this->waitforconfirmation;
                 $dbrecord->waitforconfirmation = $this->waitforconfirmation;
             }
+
+            // Selflearningcourse flag for course with duration but no optiondates.
+            if (!empty($this->jsonobject->selflearningcourse)) {
+                $this->selflearningcourse = (int)$this->jsonobject->selflearningcourse;
+                $this->jsonobject->selflearningcourse = $this->selflearningcourse;
+                $dbrecord->selflearningcourse = $this->selflearningcourse;
+            }
         } else {
             $this->boactions = $dbrecord->boactions ?? null;
             $this->canceluntil = $dbrecord->canceluntil ?? 0;
             $this->useprice = $dbrecord->useprice ?? null;
+            $this->selflearningcourse = $dbrecord->selflearningcourse ?? 0;
             $this->waitforconfirmation = $dbrecord->waitforconfirmation ?? 0;
             $this->jsonobject = $dbrecord->jsonobject ?? null;
         }
+    }
+
+    /**
+     * Load after booking actions.
+     *
+     * @param stdClass $dbrecord
+     * @return void
+     */
+    private function load_attachments(stdClass &$dbrecord) {
+
+        if ($this->cmid) {
+            $context = context_module::instance($this->cmid);
+        } else {
+            $context = context_system::instance();
+        }
+
+        $fs = get_file_storage();
+        $files = $fs->get_area_files($context->id, 'mod_booking', 'myfilemanageroption', $dbrecord->id);
+
+        $attachedfiles = [];
+
+        if (count($files) > 1) {
+            foreach ($files as $file) {
+                if ($file->get_filesize() > 0) {
+                    $filename = $file->get_filename();
+                    $url = moodle_url::make_pluginfile_url(
+                        $file->get_contextid(),
+                        $file->get_component(),
+                        $file->get_filearea(),
+                        $file->get_itemid(),
+                        $file->get_filepath(),
+                        $file->get_filename(),
+                        true
+                    );
+                    $attachedfiles[] = html_writer::link($url, $filename);
+                }
+            }
+        }
+
+        $this->attachedfiles = $attachedfiles;
     }
 
     /**
@@ -1032,15 +1187,7 @@ class booking_option_settings {
         global $DB;
 
          // Find out how many customfields are there for mod_booking.
-
-         $sql = "SELECT cff.shortname
-                 FROM {customfield_field} cff
-                 JOIN {customfield_category} cfc
-                 ON cfc.id=cff.categoryid
-                 WHERE cfc.component=:componentname";
-         $params = ['componentname' => 'mod_booking'];
-
-         $customfields = $DB->get_records_sql($sql, $params);
+         $customfields = booking_handler::get_customfields();
 
          $select = '';
          $from = '';
@@ -1051,6 +1198,18 @@ class booking_option_settings {
         $counter = 1;
         foreach ($customfields as $customfield) {
             $name = $customfield->shortname;
+
+            // We need to throw an error when there is a space in the shortname.
+
+            if (preg_match('/[^a-z0-9_]/', $name) > 0) {
+                throw new moodle_exception(
+                    'nospacesinshortnames',
+                    'mod_booking',
+                    '',
+                    $name,
+                    "This shorname of a booking customfield contains forbidden characters"
+                );
+            }
 
             $select .= "cfd$counter.value as $name ";
 
@@ -1064,12 +1223,12 @@ class booking_option_settings {
                 JOIN {customfield_field} cff
                 ON cfd.fieldid=cff.id AND cff.shortname=:cf_$name
                 JOIN {customfield_category} cfc
-                ON cff.categoryid=cfc.id AND cfc.component=:" . $name . "_componentname
+                ON cff.categoryid=cfc.id AND cfc.component=:" . $name . "_cn
             ) cfd$counter
             ON bo.id = cfd$counter.instanceid ";
 
             // Add the variables to the params array.
-            $params[$name . '_componentname'] = 'mod_booking';
+            $params[$name . '_cn'] = 'mod_booking';
             $params["cf_$name"] = $name;
 
             foreach ($filterarray as $key => $value) {
@@ -1080,6 +1239,61 @@ class booking_option_settings {
                     $params[$key] = $value;
                 }
             }
+            $counter++;
+        }
+
+        return [$select, $from, $where, $params];
+    }
+
+    /**
+     * Function to include all the values of the given custom profile fields to a table.
+     * The table is joined via userinfodata.userid = bookinganswer.userid & userinfofield.id = userinfodata.fieldid
+     * To be able to filter for the same param twice, we use this structure for searchparams [[$fieldnmae => $fieldvalue]]
+     *
+     * @param array $userinfofields
+     * @return array
+     */
+    public static function return_sql_for_custom_profile_field($userinfofields = []): array {
+
+        global $DB;
+
+        if (empty($userinfofields)) {
+            $userinfofields = $DB->get_records('user_info_field', []);
+        }
+
+         $select = '';
+         $from = '';
+         $where = '';
+         $params = [];
+        // Now we have the names of the customfields. We can now run through them and add them as colums.
+
+        $counter = 1;
+        if (!empty($userinfofields)) {
+            $select = " , ";
+        }
+        foreach ($userinfofields as $userinfofield) {
+            $name = $userinfofield->shortname;
+
+            $select .= "s$counter.data as $name ";
+
+            // After the last instance, we don't add a comma.
+            $select .= $counter >= count($userinfofields) ? "" : ", ";
+
+            $from .= " LEFT JOIN
+            (
+                SELECT ud.id, ud.data, ud.userid
+                FROM {user_info_data} ud
+                JOIN {user_info_field} uif
+                ON ud.fieldid = uif.id
+                WHERE uif.shortname LIKE '$name' AND ud.data <> ''
+            ) s$counter
+            ON s$counter.userid = ba.userid ";
+
+            // phpcs:disable
+            // Add the variables to the params array.
+            // $params[$name . '_componentname'] = 'mod_booking';
+            // $params["cf_$name"] = $name;
+            // phpcs:enable
             $counter++;
         }
 
@@ -1127,7 +1341,6 @@ class booking_option_settings {
         // As this is a complete subrequest, we have to add the "where" to the outer table, where it is already rendered.
         $counter = 0;
         foreach ($searchparams as $searchparam) {
-
             if (!$key = key($searchparam)) {
                 throw new moodle_exception('wrongstructureofsearchparams', 'mod_booking');
             }
@@ -1180,7 +1393,6 @@ class booking_option_settings {
         // As this is a complete subrequest, we have to add the "where" to the outer table, where it is already rendered.
         $counter = 0;
         foreach ($searchparams as $searchparam) {
-
             if (!$key = key($searchparam)) {
                 throw new moodle_exception('wrongstructureofsearchparams', 'mod_booking');
             }
@@ -1226,24 +1438,27 @@ class booking_option_settings {
      * Especially to create a shopping cart and such...
      * ... we want one central function where we always get all the necessary keys.
      *
-     * @param object $user
+     * @param object|null $user
      * @return array
      */
-    public function return_booking_option_information(object $user = null): array {
+    public function return_booking_option_information(?object $user = null): array {
 
         global $USER;
 
         if (empty($user)) {
             $user = $USER;
         }
-
-        $price = price::get_price('option', $this->id, $user);
+        if (!empty($this->jsonobject->useprice)) {
+            $price = price::get_price('option', $this->id, $user);
+        } else {
+            $price = [];
+        }
 
         $canceluntil = booking_option::return_cancel_until_date($this->id);
 
         $returnarray = [
             'itemid' => $this->id,
-            'title' => $this->text,
+            'title' => $this->get_title_with_prefix(),
             'price' => $price['price'] ?? null,
             'currency' => $price['currency'] ?? null,
             'userid' => $user->id,
@@ -1255,6 +1470,20 @@ class booking_option_settings {
             'coursestarttime' => $this->coursestarttime ?? 0,
             'courseendtime' => $this->courseendtime ?? 0,
             'costcenter' => $this->costcenter ?? '',
+            'sessions' => array_values(array_map(fn($a) => [
+                'coursestarttime' => userdate($a->coursestarttime),
+                'courseendtime' => userdate($a->courseendtime),
+                'concatinatedstartendtime' => dates_handler::prettify_optiondates_start_end(
+                    $a->coursestarttime,
+                    $a->courseendtime,
+                    current_language(),
+                ),
+            ], $this->sessions)),
+            'teachers' => array_values(array_map(fn($a) => [
+                'firstname' => $a->firstname,
+                'lastname' => $a->lastname,
+                'email' => str_replace('@', '&#64;', $a->email),
+            ], $this->teachers)),
         ];
 
         return $returnarray;
@@ -1265,10 +1494,10 @@ class booking_option_settings {
      * ... we want one central function where we always get all the necessary keys.
      *
      * @param int $subbookingid
-     * @param object $user
+     * @param object|null $user
      * @return array
      */
-    public function return_subbooking_option_information(int $subbookingid, object $user = null): array {
+    public function return_subbooking_option_information(int $subbookingid, ?object $user = null): array {
 
         global $USER;
 

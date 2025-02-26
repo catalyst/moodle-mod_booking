@@ -116,28 +116,141 @@
 
 }}
 
-<div class="card border pl-3 pr-3 pt-2 pb-0 sk-fade ml-0 mr-0 mb-2 flex-md-row align-items-center row gx-0" {{#datafields}} data-{{key}}="{{value}}" {{/datafields}}>
+{{#showheaderimagelefthalf}}
+<div class="imagelefthalfcard card rounded-0
+  pl-0 pr-3 pt-0 pb-0
+  sk-fade ml-0 mr-0 mb-3
+  flex-md-row align-items-center row gx-0" {{#datafields}} data-{{key}}="{{value}}" {{/datafields}}>
+{{/showheaderimagelefthalf}}
+{{^showheaderimagelefthalf}}
+<div class="card border
+  rounded
+  pl-0 pr-3 pt-0 pb-0
+  sk-fade ml-0 mr-0 mb-3
+  flex-md-row align-items-center row gx-0" {{#datafields}} data-{{key}}="{{value}}" {{/datafields}}>
+{{/showheaderimagelefthalf}}
   <div class="content w-100">
-    <div class="row {{rowclasses}} {{rowid}}">
-        <div
-        {{#rightside}} class="col-md-9" {{/rightside}}
-        {{^rightside}} class="col-12" {{/rightside}}
-        >
-          {{#leftside}}
+    <div class="row mod-booking-row {{rowclasses}} {{rowid}} {{#noheaderimage}}p-3{{/noheaderimage}} {{#showheaderimagelefthalf}}m-0{{/showheaderimagelefthalf}}">
+      {{#showheaderimageleft}}
+        {{#headerimage}}
+        <div class="mod-booking-view-list-image-container col-md-3">
+          {{#value}}
+            <img class="mod-booking-view-list-image rounded-left" src="{{{value}}}" {{#headerimagealt}}alt="{{.}}" title="{{.}}"{{/headerimagealt}}>
+          {{/value}}
+          {{^value}}
+            <div class="mod-booking-view-list-image rounded-left w-100 h-100"
+              style="background-color: #e6f0f7;
+                    opacity: 0.8;
+                    background-image: radial-gradient(#45aaf7 0.5px, #e6f0f7 0.5px);
+                    background-size: 10px 10px;">
+            </div>
+          {{/value}}
+        </div>
+        <div class="col-md-9 p-3">
+          <div class="row">
+        {{/headerimage}}
+      {{/showheaderimageleft}}
+      {{#showheaderimagelefthalf}}
+        {{#headerimage}}
+        <div class="mod-booking-view-list-image-container col-md-6 p-0 m-0">
+          {{#value}}
+            <img class="mod-booking-view-list-image-half rounded-0" src="{{{value}}}" {{#headerimagealt}}alt="{{.}}" title="{{.}}"{{/headerimagealt}}>
+          {{/value}}
+          {{^value}}
+            <div class="mod-booking-view-list-image-half w-100 h-100"
+              style="background-color: #e6f0f7;
+                    opacity: 0.8;
+                    background-image: radial-gradient(#45aaf7 0.5px, #e6f0f7 0.5px);
+                    background-size: 10px 10px;">
+            </div>
+          {{/value}}
+        </div>
+        <div class="col-md-6">
+          <div class="row ml-1 mr-1 mt-5 mb-3 d-flex">
+        {{/headerimage}}
+      {{/showheaderimagelefthalf}}
+      {{#showheaderimageright}}
+        {{#headerimage}}
+        <div class="col-md-9 pt-3 pl-5">
+          <div class="row">
+        {{/headerimage}}
+      {{/showheaderimageright}}
+      {{^showheaderimagelefthalf}}
+          <div
+          {{#rightside}} class="col-md-9" {{/rightside}}
+          {{^rightside}} class="col-12" {{/rightside}}
+          >
+      {{/showheaderimagelefthalf}}
+      {{#showheaderimagelefthalf}}
+          <!-- When using showheaderimagelefthalf we want to have the booking buttons below the content. -->
+          <div class="showheaderimagelefthalf-infocontent">
+      {{/showheaderimagelefthalf}}
+            {{#leftside}}
+              {{#columnclass}}<div class="{{.}} {{key}}">{{/columnclass}}
+                <span {{^value}} style="display:none" {{/value}}>
+                {{#columniclassbefore}}
+                  <i class="{{.}}" aria-hidden="true"></i>
+                {{/columniclassbefore}}
+                </span>
+                {{#columnkeyclass}}<span class="key {{.}}">{{/columnkeyclass}}
+                  {{^keystring}}
+                  {{{key}}}
+                {{/keystring}}
+                {{#keystring}}
+                  {{.}}
+                {{/keystring}}:
+                {{#columnkeyclass}}</span>{{/columnkeyclass}}
+                <span {{^value}} style="display:none" {{/value}} class="{{columnvalueclass}} ">
+                  {{{value}}}
+                </span>
+                {{#columnvalueclass}}</span>{{/columnvalueclass}}
+                <span {{^value}} style="display:none" {{/value}}>
+                {{#columniclassafter}}
+                  <i class="value {{.}}" aria-hidden="true"></i>
+                {{/columniclassafter}}
+                </span>
+              {{#columnclass}}</div>{{/columnclass}}
+            {{/leftside}}
+            <div class="d-block">
+            {{#footer}}
+              {{#columnclass}}<div class="d-inline {{.}} {{key}}">{{/columnclass}}
+                <span {{^value}} style="display:none" {{/value}}>
+                {{#columniclassbefore}}
+                  <i class="{{.}}" aria-hidden="true"></i>
+                {{/columniclassbefore}}
+                </span>
+                {{#columnkeyclass}}<span class="key {{.}}">{{/columnkeyclass}}
+                  {{^keystring}}
+                  {{{key}}}
+                {{/keystring}}
+                {{#keystring}}
+                  {{.}}
+                {{/keystring}}:
+                {{#columnkeyclass}}</span>{{/columnkeyclass}}
+                <span {{^value}} style="display:none" {{/value}} class="{{columnvalueclass}} ">
+                  {{{value}}}
+                </span>
+                {{#columnvalueclass}}</span>{{/columnvalueclass}}
+                <span {{^value}} style="display:none" {{/value}}>
+                {{#columniclassafter}}
+                  <i class="value {{.}}" aria-hidden="true"></i>
+                {{/columniclassafter}}
+                </span>
+              {{#columnclass}}</div>{{/columnclass}}
+            {{/footer}}
+          </div>
+        </div>
+        {{^showheaderimagelefthalf}}<div class="col-md-3">{{/showheaderimagelefthalf}}
+        {{#showheaderimagelefthalf}}<div class="showheaderimagelefthalf-buttoncontent ml-auto">{{/showheaderimagelefthalf}}
+          <div class="h-100 d-flex" style=" justify-content: flex-end;
+          flex-direction: column;">
+          {{#rightside}}
             {{#columnclass}}<div class="{{.}} {{key}}">{{/columnclass}}
               <span {{^value}} style="display:none" {{/value}}>
               {{#columniclassbefore}}
                 <i class="{{.}}" aria-hidden="true"></i>
               {{/columniclassbefore}}
               </span>
-              {{#columnkeyclass}}<span class="key {{.}}">{{/columnkeyclass}}
-                {{^keystring}}
-                {{{key}}}
-              {{/keystring}}
-              {{#keystring}}
-                {{.}}
-              {{/keystring}}:
-              {{#columnkeyclass}}</span>{{/columnkeyclass}}
               <span {{^value}} style="display:none" {{/value}} class="{{columnvalueclass}} ">
                 {{{value}}}
               </span>
@@ -148,60 +261,29 @@
               {{/columniclassafter}}
               </span>
             {{#columnclass}}</div>{{/columnclass}}
-          {{/leftside}}
-          <div class="d-block">
-          {{#footer}}
-            {{#columnclass}}<div class="d-inline {{.}} {{key}}">{{/columnclass}}
-              <span {{^value}} style="display:none" {{/value}}>
-              {{#columniclassbefore}}
-                <i class="{{.}}" aria-hidden="true"></i>
-              {{/columniclassbefore}}
-              </span>
-              {{#columnkeyclass}}<span class="key {{.}}">{{/columnkeyclass}}
-                {{^keystring}}
-                {{{key}}}
-              {{/keystring}}
-              {{#keystring}}
-                {{.}}
-              {{/keystring}}:
-              {{#columnkeyclass}}</span>{{/columnkeyclass}}
-              <span {{^value}} style="display:none" {{/value}} class="{{columnvalueclass}} ">
-                {{{value}}}
-              </span>
-              {{#columnvalueclass}}</span>{{/columnvalueclass}}
-              <span {{^value}} style="display:none" {{/value}}>
-              {{#columniclassafter}}
-                <i class="value {{.}}" aria-hidden="true"></i>
-              {{/columniclassafter}}
-              </span>
-            {{#columnclass}}</div>{{/columnclass}}
-          {{/footer}}
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="h-100 d-flex" style=" justify-content: flex-end;
-        flex-direction: column;">
-        {{#rightside}}
-          {{#columnclass}}<div class="{{.}} {{key}}">{{/columnclass}}
-            <span {{^value}} style="display:none" {{/value}}>
-            {{#columniclassbefore}}
-              <i class="{{.}}" aria-hidden="true"></i>
-            {{/columniclassbefore}}
-            </span>
-            <span {{^value}} style="display:none" {{/value}} class="{{columnvalueclass}} ">
-              {{{value}}}
-            </span>
-            {{#columnvalueclass}}</span>{{/columnvalueclass}}
-            <span {{^value}} style="display:none" {{/value}}>
-            {{#columniclassafter}}
-              <i class="value {{.}}" aria-hidden="true"></i>
-            {{/columniclassafter}}
-            </span>
-          {{#columnclass}}</div>{{/columnclass}}
-        {{/rightside}}
-        </div>
-      </div>
+          {{/rightside}}
+          </div>
+        {{#showheaderimageleft}}{{#headerimage}}</div></div>{{/headerimage}}{{/showheaderimageleft}}
+        {{#showheaderimagelefthalf}}{{#headerimage}}</div></div>{{/headerimage}}{{/showheaderimagelefthalf}}
+        {{#showheaderimageright}}
+          {{#headerimage}}
+            </div></div></div>
+            <div class="mod-booking-view-list-image-container col-md-3 pr-0 pl-5">
+              {{#value}}
+                <img class="mod-booking-view-list-image rounded-right" src="{{{value}}}" {{#headerimagealt}}alt="{{.}}" title="{{.}}"{{/headerimagealt}}>
+              {{/value}}
+              {{^value}}
+                <div class="mod-booking-view-list-image rounded-right w-100 h-100"
+                  style="background-color: #e6f0f7;
+                        opacity: 0.8;
+                        background-image: radial-gradient(#45aaf7 0.5px, #e6f0f7 0.5px);
+                        background-size: 10px 10px;">
+                </div>
+              {{/value}}
+            </div>
+          {{/headerimage}}
+        {{/showheaderimageright}}
+      {{^showheaderimageright}}</div>{{/showheaderimageright}}
     </div>
   </div>
-
 </div>

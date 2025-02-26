@@ -44,23 +44,13 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @author Andraž Prinčič {@link https://www.princic.net}
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class lib_test extends advanced_testcase {
-
+final class lib_test extends advanced_testcase {
     /**
      * Tests set up.
      */
     public function setUp(): void {
-
-    }
-
-    /**
-     * Tear Down.
-     *
-     * @return void
-     *
-     */
-    public function tearDown(): void {
-
+        parent::setUp();
+        $this->resetAfterTest(true);
     }
 
     /**
@@ -70,7 +60,7 @@ class lib_test extends advanced_testcase {
      * @throws \coding_exception
      * @throws \dml_exception
      */
-    public function test_subscribe_teacher_to_booking_option() {
+    public function test_subscribe_teacher_to_booking_option(): void {
 
         global $DB;
 
@@ -88,23 +78,25 @@ class lib_test extends advanced_testcase {
                     'pollurlteacherstext' => ['text' => 'text'], 'notificationtext' => ['text' => 'text'],
                     'userleave' => ['text' => 'text'], 'bookingpolicy' => 'bookingpolicy',
                     'tags' => '', 'course' => $course->id, 'bookingmanager' => $user->username,
-                    'showviews' => ['showall, showactive, mybooking, myoptions, myinstitution'],
+                    'showviews' => ['mybooking,myoptions,optionsiamresponsiblefor,showall,showactive,myinstitution'],
         ];
 
         $booking = $this->getDataGenerator()->create_module('booking', $bdata);
 
         $cm = get_coursemodule_from_instance('booking', $booking->id);
 
+        $this->setAdminUser();
+
         $record = new stdClass();
         $record->bookingid = $booking->id;
         $record->text = 'Test option';
+        $record->chooseorcreatecourse = 1; // Reqiured.
         $record->courseid = $course->id;
         $record->description = 'Test description';
 
         /** @var mod_booking_generator $plugingenerator */
         $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $option = $plugingenerator->create_option(
-                $record);
+        $option = $plugingenerator->create_option($record);
 
         $group = $this->getDataGenerator()->create_group(['courseid' => $course->id]);
 
@@ -114,7 +106,5 @@ class lib_test extends advanced_testcase {
         $this->assertEquals(1, $DB->count_records('booking_teachers', ['userid' => $user->id, 'optionid' => $option->id]));
 
         $this->assertEquals(true, groups_is_member($group->id, $user->id));
-
     }
-
 }

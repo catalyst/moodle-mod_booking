@@ -100,9 +100,6 @@ class campaignsform extends dynamic_form {
 
         switch ($data['bookingcampaigntype']) {
             case 'campaign_customfield':
-                if ($data['fieldname'] == '0') {
-                    $errors['fieldname'] = get_string('error:choosevalue', 'mod_booking');
-                }
                 if ($data['pricefactor'] < 0 || $data['pricefactor'] > 1) {
                     $errors['pricefactor'] = get_string('error:pricefactornotbetween0and1', 'mod_booking');
                 }
@@ -111,20 +108,13 @@ class campaignsform extends dynamic_form {
                 }
                 break;
             case 'campaign_blockbooking':
-                if ($data['fieldname'] == '0') {
-                    $errors['fieldname'] = get_string('error:choosevalue', 'mod_booking');
-                }
-                if ($data['percentageavailableplaces'] <= 0 || $data['percentageavailableplaces'] >= 100) {
+                if ($data['percentageavailableplaces'] < 0 || $data['percentageavailableplaces'] > 100) {
                     $errors['percentageavailableplaces'] = get_string('error:percentageavailableplaces', 'mod_booking');
                 }
                 if (empty(trim(strip_tags($data['blockinglabel'])))) {
                     $errors['blockinglabel'] = get_string('error:missingblockinglabel', 'mod_booking');
                 }
                 break;
-        }
-
-        if (empty($data['fieldvalue'])) {
-            $errors['fieldvalue'] = get_string('error:choosevalue', 'mod_booking');
         }
 
         if (empty($data['name'])) {

@@ -38,7 +38,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class addtogroup extends field_base {
-
     /**
      * This ID is used for sorting execution.
      * @var int
@@ -83,16 +82,17 @@ class addtogroup extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null
+    ): array {
 
-        return '';
+        return [];
     }
 
     /**
@@ -100,10 +100,17 @@ class addtogroup extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
-
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
     }
 
     /**
@@ -119,15 +126,14 @@ class addtogroup extends field_base {
         $optionid = $option->id;
 
         if (!empty($cmid)) {
-
             $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($cmid);
 
-            if (!empty($bookingsettings->addtogroup) && $option->courseid > 0) {
+            if (!empty($bookingsettings->addtogroup) && !empty($option->courseid)) {
                 $bo = singleton_service::get_instance_of_booking_option($cmid, $optionid);
-                // TODO: This looks kind of strange. Was this copied from legacy code? Does it still work?
+                // Todo: This looks kind of strange. Was this copied from legacy code? Does it still work?
                 // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
                 /* $bo->option->courseid = $optionsettings->courseid; */
-                $option->groupid = $bo->create_group();
+                $option->groupid = $bo->create_group($option);
                 $booked = $bo->get_all_users_booked();
                 if (!empty($booked) && $bookingsettings->autoenrol) {
                     foreach ($booked as $bookinganswer) {

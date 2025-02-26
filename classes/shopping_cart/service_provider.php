@@ -84,10 +84,12 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
             $serviceperiodend = $item['courseendtime'];
 
             // If cancellation is dependent on semester start, we also use semester start and end dates for the service period.
-            if (get_config('booking', 'canceldependenton') == "semesterstart") {
-                $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($settings->cmid);
-                if (!empty($bookingsettings->semesterid)) {
-                    $semester = new semester($bookingsettings->semesterid);
+            if (get_config('booking', 'canceldependenton') == "semesterstart"
+                && !empty($settings->semesterid)) {
+                // We switched here from booking settings to option settings.
+
+                if (!empty($settings->semesterid)) {
+                    $semester = new semester($settings->semesterid);
                     // Now we override.
                     $serviceperiodstart = $semester->startdate;
                     $serviceperiodend = $semester->enddate;
@@ -105,6 +107,27 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
                 $costcenter = reset($costcenter);
             }
 
+            $modifieddescription = get_config('booking', 'sccartdescription');
+            if (!empty($modifieddescription)) {
+
+                $replacements = [];
+                preg_match_all('/\{(.*?)\}/', $modifieddescription, $matches);
+
+                foreach ($matches[1] as $match) {
+                    $value = $settings->$match ?? get_string('invalidplaceholder', 'mod_booking');
+
+                    if (is_numeric($value)) {
+                        $value = userdate(time(), get_string('strftimedaydate', 'core_langconfig'));
+                    }
+
+                    $replacements['{' . $match . '}'] = $value;
+                }
+                $description = str_replace(array_keys($replacements), array_values($replacements), $modifieddescription);
+
+            } else {
+                $description = $item['description'];
+            }
+
             $cartitem = new cartitem(
                 $item['itemid'],
                 $item['title'],
@@ -112,12 +135,13 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
                 $item['currency'],
                 'mod_booking',
                 'option',
-                $item['description'],
+                $description,
                 $item['imageurl'],
                 $item['canceluntil'],
                 $serviceperiodstart,
                 $serviceperiodend,
-                null, 0,
+                'A',
+                0,
                 $costcenter
             );
 
@@ -161,8 +185,11 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
                 $item['canceluntil'],
                 $serviceperiodstart,
                 $serviceperiodend,
-                null, 0,
-                $costcenter
+                'A',
+                0,
+                $costcenter,
+                null,
+                'option_' . $settings->id // This is the form of the settings identifier area_itemid.
             );
 
             return ['cartitem' => $cartitem];
@@ -425,6 +452,7 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
                 MOD_BOOKING_BO_COND_PRICEISSET,
                 MOD_BOOKING_BO_COND_ALREADYRESERVED,
                 MOD_BOOKING_BO_COND_BOOKITBUTTON,
+                MOD_BOOKING_BO_COND_ONWAITINGLIST,
             ];
 
             if ($id > 0 && !in_array($id, $allowedconditions)) {
@@ -451,7 +479,12 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
             }
 
             // TODO: Dont call allow_add_item_to_cart when NOT adding to cart!
-            if ($id !== MOD_BOOKING_BO_COND_BOOKITBUTTON) {
+            if (
+                !(
+                    $id === MOD_BOOKING_BO_COND_BOOKITBUTTON
+                    || $id === MOD_BOOKING_BO_COND_ASKFORCONFIRMATION
+                )
+            ) {
                 $user = singleton_service::get_instance_of_user($userid);
                 $item = $settings->return_booking_option_information($user);
                 $cartitem = new cartitem($itemid,
@@ -465,7 +498,7 @@ class service_provider implements \local_shopping_cart\local\callback\service_pr
                     $item['canceluntil'],
                     $item['coursestarttime'],
                     $item['courseendtime'],
-                    null,
+                    'A',
                     0,
                     $item['costcenter']
                 );

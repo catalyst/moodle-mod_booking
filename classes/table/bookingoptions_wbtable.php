@@ -23,6 +23,8 @@
  */
 
 namespace mod_booking\table;
+use mod_booking\booking_answers;
+use mod_booking\local\modechecker;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -57,7 +59,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class bookingoptions_wbtable extends wunderbyte_table {
-
     /**
      * This function is called for each data row to allow processing of the
      * invisible value. It's called 'invisibleoption' so it does not interfere with
@@ -68,6 +69,15 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws coding_exception
      */
     public function col_invisibleoption($values) {
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_invisibleoption: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
 
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id, $values);
 
@@ -88,6 +98,15 @@ class bookingoptions_wbtable extends wunderbyte_table {
      */
     public function col_image($values) {
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_image: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id, $values);
 
         if (empty($settings->imageurl)) {
@@ -106,6 +125,16 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws dml_exception
      */
     public function col_teacher($values) {
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_teacher: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id);
         $ret = '';
 
@@ -136,6 +165,16 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws dml_exception
      */
     public function col_responsiblecontact($values) {
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_responsiblecontact: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id);
         $ret = '';
         if (empty($settings->responsiblecontact)) {
@@ -165,12 +204,21 @@ class bookingoptions_wbtable extends wunderbyte_table {
      */
     public function col_booknow($values) {
 
-        global $USER;
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_booknow: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
 
         // Render col_price using a template.
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id, $values);
 
-        return booking_bookit::render_bookit_button($settings, $USER->id);
+        $buyforuser = price::return_user_to_buy_for();
+
+        return booking_bookit::render_bookit_button($settings, $buyforuser->id);
     }
 
     /**
@@ -183,6 +231,17 @@ class bookingoptions_wbtable extends wunderbyte_table {
      */
     public function col_text($values) {
 
+        global $PAGE;
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_text: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $title = $values->text;
 
         // If we download, we return the raw title without link or prefix.
@@ -194,15 +253,35 @@ class bookingoptions_wbtable extends wunderbyte_table {
         // So we always need to retrieve them via singleton service for the current booking option ($values->id).
         $optionid = $values->id;
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+
+        // If $settings->cmid is missing, we show the settings object in debug mode, so we can investigate what happens.
+        if (empty($settings->cmid)) {
+            $debugmessage = "bookingoptions_wbtable function col_text: ";
+            $debugmessage .= "cmid is missing from settings object - settings: ";
+            $debugmessage .= json_encode($settings);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $buyforuser = price::return_user_to_buy_for();
         $cmid = $settings->cmid;
         $booking = singleton_service::get_instance_of_booking_by_cmid($cmid);
 
         if ($booking) {
-            $url = new moodle_url('/mod/booking/optionview.php', ['optionid' => $optionid,
-                                                                  'cmid' => $cmid,
-                                                                  'userid' => $buyforuser->id,
-                                                                ]);
+            if (!modechecker::is_ajax_or_webservice_request()) {
+                $returnurl = $PAGE->url->out();
+            } else {
+                $returnurl = '/';
+            }
+
+            // The current page is not /mod/booking/optionview.php.
+            $url = new moodle_url("/mod/booking/optionview.php", [
+                "optionid" => (int)$settings->id,
+                "cmid" => (int)$cmid,
+                "userid" => (int)$buyforuser->id,
+                'returnto' => 'url',
+                'returnurl' => $returnurl,
+            ]);
         } else {
             $url = '#';
         }
@@ -211,7 +290,13 @@ class bookingoptions_wbtable extends wunderbyte_table {
             $title = $values->titleprefix . ' - ' . $values->text;
         }
 
-        $title = "<div class='bookingoptions-wbtable-option-title'><a href='$url' target='_blank'>$title</a></div>";
+        $title = format_string($title);
+
+        if (!get_config('booking', 'openbookingdetailinsametab')) {
+            $title = "<div class='bookingoptions-wbtable-option-title'><a href='$url' target='_blank'>$title</a></div>";
+        } else {
+            $title = "<div class='bookingoptions-wbtable-option-title'><a href='$url'>$title</a></div>";
+        }
 
         return $title;
     }
@@ -225,6 +310,16 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws dml_exception
      */
     public function col_progressbar($values) {
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_progressbar: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         // Progress bar showing the consumed quota visually.
         $progressbarhtml = '';
         if (get_config('booking', 'showprogressbars')) {
@@ -246,6 +341,15 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws dml_exception
      */
     public function col_comments($values) {
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_comments: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
 
         $commentshtml = '';
 
@@ -296,10 +400,29 @@ class bookingoptions_wbtable extends wunderbyte_table {
     public function col_ratings($values) {
         global $DB, $USER;
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_ratings: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         // NOTE: Do not use $this->cmid and $this->context because it might be that booking options come from different instances!
         // So we always need to retrieve them via singleton service for the current booking option ($values->id).
         $optionid = $values->id;
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+
+        // If $settings->cmid is missing, we show the settings object in debug mode, so we can investigate what happens.
+        if (empty($settings->cmid)) {
+            $debugmessage = "bookingoptions_wbtable function col_ratings: ";
+            $debugmessage .= "cmid is missing from settings object - settings: ";
+            $debugmessage .= json_encode($settings);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $cmid = $settings->cmid;
         $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($cmid);
 
@@ -346,7 +469,6 @@ class bookingoptions_wbtable extends wunderbyte_table {
             $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($cmid);
             if (!empty($context) && !empty($bookingsettings)) {
                 if ($bookingsettings->ratings > 0) {
-
                     $ratingshtml =
                     "<div>
                         <select class='starrating' id='rate$values->id' data-current-rating='$myrating' data-itemid='$values->id'>
@@ -359,8 +481,8 @@ class bookingoptions_wbtable extends wunderbyte_table {
                     </div>";
 
                     if (has_capability('mod/booking:readresponses', $context) || $isteacher) {
-                        $ratingshtml .= get_string('aggregateavg', 'rating') . ' ' . number_format(
-                                        (float) $rating, 2, '.', '') . " ($ratingcount)";
+                        $ratingshtml .= get_string('aggregateavg', 'rating') . ' ' .
+                            number_format((float) $rating, 2, '.', '') . " ($ratingcount)";
                     }
                 }
             }
@@ -378,6 +500,16 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws coding_exception
      */
     public function col_bookings($values) {
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_bookings: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $output = singleton_service::get_renderer('mod_booking');
 
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id, $values);
@@ -415,10 +547,18 @@ class bookingoptions_wbtable extends wunderbyte_table {
      */
     public function col_location($values) {
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_location: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id, $values);
 
         if (isset($settings->entity) && (count($settings->entity) > 0)) {
-
             $url = new moodle_url('/local/entities/view.php', ['id' => $settings->entity['id']]);
             // Full name of the entity (NOT the shortname).
 
@@ -451,6 +591,15 @@ class bookingoptions_wbtable extends wunderbyte_table {
      */
     public function col_institution($values) {
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_institution: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id, $values);
         return $settings->institution;
     }
@@ -466,6 +615,15 @@ class bookingoptions_wbtable extends wunderbyte_table {
     public function col_course($values) {
         global $USER;
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_course: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id, $values);
 
         $ret = '';
@@ -477,14 +635,43 @@ class bookingoptions_wbtable extends wunderbyte_table {
             return $courseurl;
         }
 
+        $isteacherofthisoption = booking_check_if_teacher($values);
+
+        if (!empty($settings->cmid)) {
+            $context = context_module::instance($settings->cmid);
+        } else {
+            $context = $this->get_context();
+        }
+
+        // When we have this seeting, we never show the link here.
+        if (
+            get_config('booking', 'linktomoodlecourseonbookedbutton')
+            && (!has_capability('mod/booking:updatebooking', $context)
+            && !$isteacherofthisoption)
+        ) {
+            return '';
+        }
+
         $answersobject = singleton_service::get_instance_of_booking_answers($settings);
         $status = $answersobject->user_status($USER->id);
 
         $isteacherofthisoption = booking_check_if_teacher($values);
-        if (!empty($settings->courseid) && (
-            $status == MOD_BOOKING_STATUSPARAM_BOOKED ||
-            has_capability('mod/booking:updatebooking', context_system::instance()) ||
-            $isteacherofthisoption)) {
+
+        if (
+            $status == MOD_BOOKING_STATUSPARAM_BOOKED
+            && get_config('booking', 'linktomoodlecourseonbookedbutton')
+        ) {
+            return '';
+        }
+
+        if (
+            !empty($settings->courseid)
+            && (
+                $status == MOD_BOOKING_STATUSPARAM_BOOKED
+                    || has_capability('mod/booking:updatebooking', $context)
+                    || $isteacherofthisoption
+            )
+        ) {
             // The link will be shown to everyone who...
             // ...has booked this option.
             // ...is a teacher of this option.
@@ -507,6 +694,16 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws coding_exception
      */
     public function col_dayofweektime($values) {
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_dayofweektime: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $ret = '';
         $settings = singleton_service::get_instance_of_booking_option_settings($values->id, $values);
         if (!empty($settings->dayofweektime)) {
@@ -525,10 +722,29 @@ class bookingoptions_wbtable extends wunderbyte_table {
      */
     public function col_showdates($values) {
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_showdates: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         // NOTE: Do not use $this->cmid and $this->context because it might be that booking options come from different instances!
         // So we always need to retrieve them via singleton service for the current booking option ($values->id).
         $optionid = $values->id;
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+
+        // If $settings->cmid is missing, we show the settings object in debug mode, so we can investigate what happens.
+        if (empty($settings->cmid)) {
+            $debugmessage = "bookingoptions_wbtable function col_showdates: ";
+            $debugmessage .= "cmid is missing from settings object - settings: ";
+            $debugmessage .= json_encode($settings);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $cmid = $settings->cmid;
         $booking = singleton_service::get_instance_of_booking_by_cmid($cmid);
 
@@ -543,11 +759,16 @@ class bookingoptions_wbtable extends wunderbyte_table {
             $cachekey = "sessiondates$optionid$lang";
             $cache = cache::make($this->cachecomponent, $this->rawcachename);
 
-            if (!$ret = $cache->get($cachekey)) {
+            if (
+                !empty($settings->selflearningcourse)
+                || !$ret = $cache->get($cachekey)
+            ) {
                 $data = new \mod_booking\output\col_coursestarttime($optionid, $booking);
                 $output = singleton_service::get_renderer('mod_booking');
                 $ret = $output->render_col_coursestarttime($data);
-                $cache->set($cachekey, $ret);
+                if (empty($settings->selflearningcourse)) {
+                    $cache->set($cachekey, $ret);
+                }
             }
         }
         return $ret;
@@ -571,7 +792,7 @@ class bookingoptions_wbtable extends wunderbyte_table {
         $settings = singleton_service::get_instance_of_booking_option_settings($values->optionid, $values);
         $bookinganswers = singleton_service::get_instance_of_booking_answers($settings, 0);
 
-        if (count($bookinganswers->usersonlist) > 0) {
+        if (booking_answers::count_places($bookinganswers->usersonlist) > 0) {
             // Add a link to redirect to the booking option.
             $link = new moodle_url($CFG->wwwroot . '/mod/booking/report.php', [
                 'id' => $values->cmid,
@@ -610,19 +831,47 @@ class bookingoptions_wbtable extends wunderbyte_table {
     public function col_action($values) {
         global $OUTPUT, $USER;
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_action: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         // NOTE: Do not use $this->cmid and $this->context because it might be that booking options come from different instances!
         // So we always need to retrieve them via singleton service for the current booking option ($values->id).
         $optionid = $values->id;
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+
+        // If $settings->cmid is missing, we show the settings object in debug mode, so we can investigate what happens.
+        if (empty($settings->cmid)) {
+            $debugmessage = "bookingoptions_wbtable function col_action: ";
+            $debugmessage .= "cmid is missing from settings object - settings: ";
+            $debugmessage .= json_encode($settings);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $cmid = $settings->cmid;
-        $booking = singleton_service::get_instance_of_booking_by_cmid($cmid);
         $context = context_module::instance($cmid);
         $answersobject = singleton_service::get_instance_of_booking_answers($settings);
         $status = $answersobject->user_status($USER->id);
 
         // Set the returnurl to navigate back to after form is saved.
-        $viewphpurl = new moodle_url('/mod/booking/view.php', ['id' => $cmid]);
-        $returnurl = $viewphpurl->out();
+
+        $returnurloptions = ['id' => $cmid];
+        if (!empty(optional_param('whichview', '', PARAM_ALPHAEXT))) {
+            $returnurloptions['whichview'] = optional_param('whichview', '', PARAM_ALPHAEXT);
+        }
+
+        if (!empty(optional_param('optionid', '', PARAM_INT))) {
+            $returnurloptions['optionid'] = optional_param('optionid', '', PARAM_INT);
+        }
+
+        $viewphpurl = new moodle_url('/mod/booking/view.php', $returnurloptions);
+        $returnurl = $viewphpurl->out(false);
 
         // Capabilities.
         $canupdate = has_capability('mod/booking:updatebooking', $context);
@@ -634,19 +883,23 @@ class bookingoptions_wbtable extends wunderbyte_table {
 
         if ($status == MOD_BOOKING_STATUSPARAM_BOOKED) {
             $ret .= html_writer::link(
-                new moodle_url('/mod/booking/viewconfirmation.php',
-                    ['id' => $cmid, 'optionid' => $optionid]),
+                new moodle_url(
+                    '/mod/booking/viewconfirmation.php',
+                    ['id' => $cmid, 'optionid' => $optionid]
+                ),
                 $OUTPUT->pix_icon('t/print', get_string('bookedtext', 'mod_booking')),
                 [
                     'target' => '_blank',
                     'class' => 'text-primary pr-3',
                     'aria-label' => get_string('bookedtext', 'mod_booking'),
-                ]);
+                ]
+            );
         }
 
         if ($canupdate || $isteacherandcanedit) {
             $ret .= html_writer::link(
-                new moodle_url('/mod/booking/editoptions.php',
+                new moodle_url(
+                    '/mod/booking/editoptions.php',
                     [
                         'id' => $cmid,
                         'optionid' => $optionid,
@@ -659,76 +912,139 @@ class bookingoptions_wbtable extends wunderbyte_table {
                     'target' => '_self',
                     'class' => 'text-primary',
                     'aria-label' => get_string('editbookingoption', 'mod_booking'),
-                ]);
+                ]
+            );
         }
 
         if ($canupdate || $isteacherandcanedit) {
             $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(
-                    new moodle_url('/mod/booking/editoptions.php',
-                        ['id' => $cmid, 'optionid' => $optionid,
+                new moodle_url(
+                    '/mod/booking/editoptions.php',
+                    [
+                        'id' => $cmid, 'optionid' => $optionid,
                         'returnto' => 'url',
                         'returnurl' => $returnurl,
-                        ]),
-                    $OUTPUT->pix_icon('t/editstring', get_string('editbookingoption', 'mod_booking')) .
-                    get_string('editbookingoption', 'mod_booking')) . '</div>';
+                    ]
+                ),
+                $OUTPUT->pix_icon('t/editstring', get_string('editbookingoption', 'mod_booking')) .
+                get_string('editbookingoption', 'mod_booking')
+            ) . '</div>';
+
+            $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(
+                new moodle_url(
+                    '/mod/booking/report.php',
+                    [
+                        'id' => $cmid,
+                        'optionid' => $optionid,
+                    ]
+                ),
+                '<i class="icon fa fa-ticket fa-fw" aria-hidden="true"
+                    aria-label="' . get_string('manageresponses', 'mod_booking') .
+                    '" title="' . get_string('manageresponses', 'mod_booking') . '" >
+                </i>' .
+                get_string('manageresponses', 'mod_booking')
+            ) . '</div>';
+
+            if (get_config('booking', 'bookingstracker')) {
+                $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(
+                    new moodle_url(
+                        '/mod/booking/report2.php',
+                        [
+                            'cmid' => $cmid,
+                            'optionid' => $optionid,
+                        ]
+                    ),
+                    '<i class="icon fa fa-sitemap fa-fw" aria-hidden="true"
+                        aria-label="' . get_string('bookingstracker', 'mod_booking') .
+                        '" title="' . get_string('bookingstracker', 'mod_booking') . '" >
+                    </i>' .
+                    get_string('bookingstracker', 'mod_booking')
+                ) . '</div>';
+            }
 
             // Book other users.
-            if (has_capability('mod/booking:bookforothers', $context) &&
+            if (
+                has_capability('mod/booking:bookforothers', $context) &&
                 (has_capability('mod/booking:subscribeusers', $context) ||
-                booking_check_if_teacher($values))) {
-
-                $subscribeusersurl = new moodle_url('/mod/booking/subscribeusers.php',
+                booking_check_if_teacher($values))
+            ) {
+                $subscribeusersurl = new moodle_url(
+                    '/mod/booking/subscribeusers.php',
                     ['id' => $cmid, 'optionid' => $optionid,
                     'returnto' => 'url',
                     'returnurl' => $returnurl,
-                    ]);
+                    ]
+                );
                 $ddoptions[] = '<div class="dropdown-item">' .
-                    html_writer::link($subscribeusersurl,
-                        $OUTPUT->pix_icon('i/users',
-                            get_string('bookotherusers', 'mod_booking')) .
-                        get_string('bookotherusers', 'mod_booking')) . '</div>';
+                    html_writer::link(
+                        $subscribeusersurl,
+                        $OUTPUT->pix_icon(
+                            'i/users',
+                            get_string('bookotherusers', 'mod_booking')
+                        ) .
+                        get_string('bookotherusers', 'mod_booking')
+                    ) . '</div>';
             }
 
             // Create booking option from each option date.
-            $createfromoptiondateurl = new moodle_url('/mod/booking/editoptions.php',
-                    ['id' => $cmid, 'optionid' => $optionid, 'createfromoptiondates' => 1]);
+            $createfromoptiondateurl = new moodle_url(
+                '/mod/booking/editoptions.php',
+                ['id' => $cmid, 'optionid' => $optionid, 'createfromoptiondates' => 1]
+            );
             $ddoptions[] = '<div class="dropdown-item">' .
-                    html_writer::link($createfromoptiondateurl,
-                            $OUTPUT->pix_icon('i/withsubcat',
-                                    get_string('createoptionsfromoptiondate', 'mod_booking')) .
-                            get_string('createoptionsfromoptiondate', 'mod_booking')) . '</div>';
+                    html_writer::link(
+                        $createfromoptiondateurl,
+                        $OUTPUT->pix_icon(
+                            'i/withsubcat',
+                            get_string('createoptionsfromoptiondate', 'mod_booking')
+                        ) .
+                        get_string('createoptionsfromoptiondate', 'mod_booking')
+                    ) . '</div>';
 
             if (get_config('booking', 'teachersallowmailtobookedusers')) {
                 $mailtolink = booking_option::get_mailto_link_for_partipants($optionid);
                 if (!empty($mailtolink)) {
                     $ddoptions[] = '<div class="dropdown-item">' .
-                        html_writer::link($mailtolink, $OUTPUT->pix_icon('t/email',
-                            get_string('sendmailtoallbookedusers', 'mod_booking')) .
+                        html_writer::link($mailtolink, $OUTPUT->pix_icon(
+                            't/email',
+                            get_string('sendmailtoallbookedusers', 'mod_booking')
+                        ) .
                         get_string('sendmailtoallbookedusers', 'booking')) .
                     '</div>';
                 }
             }
 
             // Show link to optiondates-teachers-report (teacher substitutions).
-            $optiondatesteachersmoodleurl = new moodle_url('/mod/booking/optiondates_teachers_report.php',
-                ['cmid' => $cmid, 'optionid' => $optionid, 'returnto' => 'url', 'returnurl' => $returnurl]);
+            $optiondatesteachersmoodleurl = new moodle_url(
+                '/mod/booking/optiondates_teachers_report.php',
+                ['cmid' => $cmid, 'optionid' => $optionid, 'returnto' => 'url', 'returnurl' => $returnurl]
+            );
             $ddoptions[] = '<div class="dropdown-item">' .
-                html_writer::link($optiondatesteachersmoodleurl,
-                    $OUTPUT->pix_icon('i/grades',
-                        get_string('optiondatesteachersreport', 'mod_booking')) .
-                    get_string('optiondatesteachersreport', 'mod_booking')) . '</div>';
+                html_writer::link(
+                    $optiondatesteachersmoodleurl,
+                    $OUTPUT->pix_icon(
+                        'i/grades',
+                        get_string('optiondatesteachersreport', 'mod_booking')
+                    ) .
+                    get_string('optiondatesteachersreport', 'mod_booking')
+                ) . '</div>';
 
             // Show only one option.
-            $onlyoneurl = new moodle_url('/mod/booking/view.php',
-                ['id' => $cmid, 'optionid' => $optionid, 'whichview' => 'showonlyone']);
+            $onlyoneurl = new moodle_url(
+                '/mod/booking/view.php',
+                ['id' => $cmid, 'optionid' => $optionid, 'whichview' => 'showonlyone']
+            );
             $ddoptions[] = '<div class="dropdown-item">' .
-                html_writer::link($onlyoneurl,
-                    $OUTPUT->pix_icon('i/publish',
-                        get_string('onlythisbookingoption', 'mod_booking')) .
-                    get_string('onlythisbookingoption', 'mod_booking')) . '</div>';
+                html_writer::link(
+                    $onlyoneurl,
+                    $OUTPUT->pix_icon(
+                        'i/publish',
+                        get_string('onlythisbookingoption', 'mod_booking')
+                    ) .
+                    get_string('onlythisbookingoption', 'mod_booking')
+                ) . '</div>';
 
             if ($canupdate) {
-
                 // Cancel booking options.
                 // Find out if the booking option has a price or not.
                 $optioninfo = $settings->return_booking_option_information();
@@ -739,7 +1055,8 @@ class bookingoptions_wbtable extends wunderbyte_table {
                     // We have to cancel the shopping-cart way!
                     if ($values->status == 1) {
                         // If booking option is already cancelled, we want to show the "undo cancel" button.
-                        $ddoptions[] = '<div class="dropdown-item">' . html_writer::link('#',
+                        $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(
+                            '#',
                             $OUTPUT->pix_icon('i/reload', '') .
                             get_string('undocancelthisbookingoption', 'mod_booking'),
                             [
@@ -751,11 +1068,12 @@ class bookingoptions_wbtable extends wunderbyte_table {
                                     "require(['mod_booking/confirm_cancel'], function(init) {
                                         init.init('" . $optionid . "', '" . $values->status . "');
                                     });",
-                            ]) . "</div>";
-
+                            ]
+                        ) . "</div>";
                     } else {
                         // Else we show the cancel button.
-                        $ddoptions[] = '<div class="dropdown-item">' . html_writer::link('#',
+                        $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(
+                            '#',
                             $OUTPUT->pix_icon('t/block', '') .
                             get_string('cancelallusers', 'mod_booking'),
                             [
@@ -767,14 +1085,15 @@ class bookingoptions_wbtable extends wunderbyte_table {
                                     "require(['local_shopping_cart/menu'], function(menu) {
                                         menu.confirmCancelAllUsersAndSetCreditModal('" . $optionid . "', 'mod_booking', 'option');
                                     });",
-                            ]) . "</div>";
+                            ]
+                        ) . "</div>";
                     }
-
                 } else {
                     // The option has no price or shopping cart is not installed, so we cancel the default booking way.
                     if ($values->status == 1) {
                         // If booking option is already cancelled, we want to show the "undo cancel" button.
-                        $ddoptions[] = '<div class="dropdown-item">' . html_writer::link('#',
+                        $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(
+                            '#',
                             $OUTPUT->pix_icon('i/reload', '') .
                             get_string('undocancelthisbookingoption', 'mod_booking'),
                             [
@@ -782,10 +1101,12 @@ class bookingoptions_wbtable extends wunderbyte_table {
                                     "require(['mod_booking/confirm_cancel'], function(init) {
                                         init.init('" . $optionid . "', '" . $values->status . "');
                                     });",
-                            ]) . "</div>";
+                            ]
+                        ) . "</div>";
                     } else {
                         // Else we show the cancel button.
-                        $ddoptions[] = '<div class="dropdown-item">' . html_writer::link('#',
+                        $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(
+                            '#',
                             $OUTPUT->pix_icon('t/block', '') .
                             get_string('cancelthisbookingoption', 'mod_booking'),
                             [
@@ -793,19 +1114,24 @@ class bookingoptions_wbtable extends wunderbyte_table {
                                     "require(['mod_booking/confirm_cancel'], function(init) {
                                         init.init('" . $optionid . "', '" . $values->status . "');
                                     });",
-                            ]) . "</div>";
+                            ]
+                        ) . "</div>";
                     }
                 }
 
-                $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(new moodle_url('/mod/booking/editoptions.php',
-                        ['id' => $cmid, 'optionid' => -1, 'copyoptionid' => $optionid,
+                $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(new moodle_url(
+                    '/mod/booking/editoptions.php',
+                    ['id' => $cmid, 'optionid' => -1, 'copyoptionid' => $optionid,
                         'returnto' => 'url', 'returnurl' => $returnurl,
-                        ]), $OUTPUT->pix_icon('t/copy',
-                            get_string('duplicatebooking', 'mod_booking')) .
-                        get_string('duplicatebooking', 'mod_booking')) . '</div>';
+                    ]
+                ), $OUTPUT->pix_icon(
+                    't/copy',
+                    get_string('duplicatebookingoption', 'mod_booking')
+                ) .
+                        get_string('duplicatebookingoption', 'mod_booking')) . '</div>';
 
                 $ddoptions[] = '<div class="dropdown-item">' . html_writer::link(
-                        new moodle_url('/mod/booking/report.php', [
+                    new moodle_url('/mod/booking/report.php', [
                             'id' => $cmid,
                             'optionid' => $optionid,
                             'action' => 'deletebookingoption',
@@ -813,10 +1139,11 @@ class bookingoptions_wbtable extends wunderbyte_table {
                             'returnto' => 'url',
                             'returnurl' => $returnurl,
                         ]),
-                        $OUTPUT->pix_icon('t/delete', get_string('deletethisbookingoption', 'mod_booking')) .
+                    $OUTPUT->pix_icon('t/delete', get_string('deletethisbookingoption', 'mod_booking')) .
                             get_string('deletethisbookingoption', 'mod_booking')
                 ) . '</div>';
             }
+            // phpcs:ignore moodle.Commenting.TodoComment.MissingInfoInline
             // TODO: Move booking options to another option currently does not work correcly.
             // We temporarily remove it from booking until we are sure, it works.
             // We need to make sure it works for: teachers, optiondates, prices, answers customfields etc.
@@ -835,11 +1162,14 @@ class bookingoptions_wbtable extends wunderbyte_table {
 
         if (!empty($ddoptions)) {
             $ret .= '<div class="dropdown d-inline">
-                    <button class="dropdown-toggle btn btn-link" id="action-menu-toggle-' . $optionid .
+                    <button class="bookingoption-edit-button dropdown-toggle btn btn-light btn-sm" id="action-menu-toggle-' .
+                        $optionid .
                         '" title="" role="button" data-toggle="dropdown"
-                        aria-haspopup="true" aria-expanded="false">' . $OUTPUT->pix_icon(
-                    't/edit', get_string('settings', 'moodle')) .
-                '</button>
+                        aria-haspopup="true" aria-expanded="false">
+                        <i class="icon fa fa-cog fa-fw" aria-hidden="true"
+                            aria-label="' . get_string('settings') . '" title="' . get_string('settings') . '" >
+                        </i>
+                    </button>
                     <div class="dropdown-menu dropdown-menu-right menu align-tr-br" id="action-menu-' .
                 $optionid .
                 '-menu" data-rel="menu-content"
@@ -881,12 +1211,31 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws coding_exception
      */
     public function col_statusdescription($values) {
-        $ret = '';
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_statusdescription: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
+        $ret = '';
         // NOTE: Do not use $this->cmid and $this->context because it might be that booking options come from different instances!
         // So we always need to retrieve them via singleton service for the current booking option ($values->id).
         $optionid = $values->id;
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+
+        // If $settings->cmid is missing, we show the settings object in debug mode, so we can investigate what happens.
+        if (empty($settings->cmid)) {
+            $debugmessage = "bookingoptions_wbtable function col_statusdescription: ";
+            $debugmessage .= "cmid is missing from settings object - settings: ";
+            $debugmessage .= json_encode($settings);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $cmid = $settings->cmid;
         $bookingoption = singleton_service::get_instance_of_booking_option($cmid, $optionid);
         $bookinganswers = singleton_service::get_instance_of_booking_answers($settings);
@@ -908,6 +1257,15 @@ class bookingoptions_wbtable extends wunderbyte_table {
      */
     public function col_description($values) {
 
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_description: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         $description = $values->description;
 
         // If we download, we want to show text only without HTML tags.
@@ -917,14 +1275,13 @@ class bookingoptions_wbtable extends wunderbyte_table {
             return strip_tags($description);
         }
 
-        $ret = $description;
+        $ret = format_text($description);
 
         if (!empty(get_config('booking', 'collapsedescriptionmaxlength'))) {
-
             $maxlength = (int)get_config('booking', 'collapsedescriptionmaxlength');
 
             // Show collapsible for long descriptions.
-            $shortdescription = strip_tags($description, '<br>');
+            $shortdescription = strip_tags($ret, '<br>');
             if (strlen($shortdescription) > $maxlength) {
                 $ret =
                     '<div>
@@ -934,7 +1291,7 @@ class bookingoptions_wbtable extends wunderbyte_table {
                             get_string('showdescription', 'mod_booking') . '...</a>
                     </div>
                     <div class="collapse" id="collapseDescription' . $values->id . '">
-                        <div class="card card-body border-1 mt-1 mb-1 mr-3">' . $description . '</div>
+                        <div class="card card-body border-1 mt-1 mb-1 mr-3">' . $ret . '</div>
                     </div>';
             }
         }
@@ -1013,6 +1370,16 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws coding_exception
      */
     public function col_attachment($values) {
+
+        // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
+        if (empty($values->id)) {
+            $debugmessage = "bookingoptions_wbtable function col_attachment: ";
+            $debugmessage .= "id (optionid) is missing from values object - values: ";
+            $debugmessage .= json_encode($values);
+            debugging($debugmessage, DEBUG_DEVELOPER);
+            return '';
+        }
+
         return booking_option::render_attachments($values->id, 'mod-booking-option-attachments mb-2');
     }
 }

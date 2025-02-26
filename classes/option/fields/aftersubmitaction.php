@@ -86,14 +86,14 @@ class aftersubmitaction extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         if (isset($formdata->aftersubmitaction)) {
             switch ($formdata->aftersubmitaction) {
@@ -119,10 +119,22 @@ class aftersubmitaction extends field_base {
                     ]);
                     $formdata->returnurl = $newreturnurl->out(false);
                     $newoption->returnurl = $newreturnurl->out(false);
-                    break;;
+                    break;
+                case 'submitandgoback':
+                    if (empty($formdata->returnurl)) {
+                        $newreturnurl = new moodle_url('/mod/booking/view.php', [
+                            'id' => $formdata->cmid,
+                            'optionid' => $newoption->id,
+                        ]);
+                        $formdata->returnurl = $newreturnurl->out(false);
+                        $newoption->returnurl = $newreturnurl->out(false);
+                    } else {
+                        $newoption->returnurl = $formdata->returnurl;
+                    }
+                    break;
             }
         }
-        return '';
+        return [];
     }
 
     /**
@@ -130,9 +142,17 @@ class aftersubmitaction extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // What to do after submit button is pressed.
         $aftersubmitactions = [

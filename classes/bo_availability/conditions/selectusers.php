@@ -58,20 +58,53 @@ class selectusers implements bo_condition {
     /** @var bool $overridable Indicates if the condition can be overriden. */
     public $overridable = true;
 
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = true;
+
     /** @var stdClass $customsettings an stdclass coming from the json which passes custom settings */
     public $customsettings = null;
 
     /**
+     * Singleton instance.
+     *
+     * @var object
+     */
+    private static $instance = null;
+
+    /**
+     * Singleton instance.
+     *
+     * @param ?int $id
+     * @return object
+     *
+     */
+    public static function instance(?int $id = null): object {
+        if (empty(self::$instance)) {
+            self::$instance = new self($id);
+        }
+        return self::$instance;
+    }
+
+    /**
      * Constructor.
      *
-     * @param int $id
+     * @param ?int $id
      * @return void
      */
-    public function __construct(int $id = null) {
-
+    private function __construct(?int $id = null) {
         if ($id) {
             $this->id = $id;
         }
+    }
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
     }
 
     /**
@@ -123,6 +156,18 @@ class selectusers implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -213,11 +258,11 @@ class selectusers implements bo_condition {
             ];
 
             $mform->addElement('advcheckbox', 'bo_cond_selectusers_restrict',
-                    get_string('bo_cond_selectusers_restrict', 'mod_booking'));
+                    get_string('bocondselectusersrestrict', 'mod_booking'));
 
             $mform->addElement('autocomplete', 'bo_cond_selectusers_userids',
-                get_string('bo_cond_selectusers_userids', 'mod_booking'), [], $options);
-            $mform->addHelpButton('bo_cond_selectusers_userids', 'bo_cond_selectusers_userids', 'mod_booking');
+                get_string('bocondselectusersuserids', 'mod_booking'), [], $options);
+            $mform->addHelpButton('bo_cond_selectusers_userids', 'bocondselectusersuserids', 'mod_booking');
             $mform->hideIf('bo_cond_selectusers_userids', 'bo_cond_selectusers_restrict', 'notchecked');
 
             $mform->addElement('checkbox', 'bo_cond_selectusers_overrideconditioncheckbox',
@@ -245,8 +290,9 @@ class selectusers implements bo_condition {
                 $fullclassname = get_class($overridecondition); // With namespace.
                 $classnameparts = explode('\\', $fullclassname);
                 $shortclassname = end($classnameparts); // Without namespace.
+                $shortclassname = str_replace("_", "", $shortclassname); // Remove underscroll.
                 $overrideconditionsarray[$overridecondition->id] =
-                    get_string('bo_cond_' . $shortclassname, 'mod_booking');
+                    get_string('bocond' . $shortclassname, 'mod_booking');
             }
 
             // Check for json conditions that might have been saved before.
@@ -257,13 +303,13 @@ class selectusers implements bo_condition {
                     if (!empty($jsonconditions)) {
                         foreach ($jsonconditions as $jsoncondition) {
                             $currentclassname = $jsoncondition->class;
-                            $currentcondition = new $currentclassname();
+                            $currentcondition = $currentclassname::instance();
                             // Currently conditions of the same type cannot be combined with each other.
                             if ($jsoncondition->id != $this->id
                                 && isset($currentcondition->overridable)
                                 && ($currentcondition->overridable == true)) {
-                                $overrideconditionsarray[$jsoncondition->id] = get_string('bo_cond_' .
-                                    $jsoncondition->name, 'mod_booking');
+                                $overrideconditionsarray[$jsoncondition->id] = get_string('bocond' .
+                                    str_replace("_", "", $jsoncondition->name), 'mod_booking');
                             }
                         }
                     }
@@ -283,7 +329,7 @@ class selectusers implements bo_condition {
         } else {
             // No PRO license is active.
             $mform->addElement('static', 'static:selectusers',
-                get_string('bo_cond_selectusers_restrict', 'mod_booking'),
+                get_string('bocondselectusersrestrict', 'mod_booking'),
                 get_string('proversiononly', 'mod_booking'));
         }
 
@@ -380,11 +426,19 @@ class selectusers implements bo_condition {
      * @param booking_option_settings $settings
      * @return string
      */
-    private function get_description_string($isavailable, $full, $settings) {
+    private function get_description_string(bool $isavailable, bool $full, booking_option_settings $settings) {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
         global $DB;
         if ($isavailable) {
-            $description = $full ? get_string('bo_cond_selectusers_full_available', 'mod_booking') :
-                get_string('bo_cond_selectusers_available', 'mod_booking');
+            $description = $full ? get_string('bocondselectusersfullavailable', 'mod_booking') :
+                get_string('bocondselectusersavailable', 'mod_booking');
         } else {
             if (!$this->customsettings) {
                 // This description can only works with the right custom settings.
@@ -408,9 +462,9 @@ class selectusers implements bo_condition {
                 $allowedusersstring = implode(', ', $allowedusersstringarr);
             }
 
-            $description = $full ? get_string('bo_cond_selectusers_full_not_available',
+            $description = $full ? get_string('bocondselectusersfullnotavailable',
                 'mod_booking', $allowedusersstring) :
-                get_string('bo_cond_selectusers_not_available', 'mod_booking');
+                get_string('bocondselectusersnotavailable', 'mod_booking');
         }
         return $description;
     }

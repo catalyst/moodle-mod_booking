@@ -43,39 +43,74 @@ class restore_booking_activity_structure_step extends restore_activity_structure
         $userinfo = $this->get_setting_value('userinfo');
 
         $paths[] = new restore_path_element('booking', '/activity/booking');
-        $paths[] = new restore_path_element('booking_option', '/activity/booking/options/option');
-        $paths[] = new restore_path_element('booking_category',
-                '/activity/booking/categories/caegory');
-        $paths[] = new restore_path_element('booking_tag', '/activity/booking/tags/tag');
-        $paths[] = new restore_path_element('booking_other',
-                '/activity/booking/options/option/others/other');
-        $paths[] = new restore_path_element('booking_optiondate',
-                '/activity/booking/optiondates/optiondate');
-        $paths[] = new restore_path_element('booking_customfield',
-                '/activity/booking/customfields/customfield');
 
-        // Only restore teachers, if config setting is set.
-        if (get_config('booking', 'duplicationrestoreteachers')) {
-            $paths[] = new restore_path_element('booking_teacher',
-                '/activity/booking/teachers/teacher');
-        }
+        $paths[] = new restore_path_element(
+            'booking_category',
+            '/activity/booking/categories/caegory'
+        );
+        $paths[] = new restore_path_element(
+            'booking_tag',
+            '/activity/booking/tags/tag'
+        );
+        $paths[] = new restore_path_element(
+            'booking_other',
+            '/activity/booking/options/option/others/other'
+        );
 
-        // Only restore prices, if config setting is set.
-        if (get_config('booking', 'duplicationrestoreprices')) {
-            $paths[] = new restore_path_element('booking_price',
-                '/activity/booking/options/option/prices/price');
-        }
+        $paths[] = new restore_path_element(
+            'booking_customfield',
+            '/activity/booking/customfields/customfield'
+        );
 
-        // Only restore entitiesrelations, if config setting is set.
-        if (get_config('booking', 'duplicationrestoreentities')) {
-            $paths[] = new restore_path_element('booking_entity',
-                '/activity/booking/options/option/entitiesrelations/entitiesrelation');
-        }
+        // If we don't have booking options, of course we don't have any of the below settings.
+        if (get_config('booking', 'duplicationrestorebookings')) {
+            $paths[] = new restore_path_element(
+                'booking_option',
+                '/activity/booking/options/option'
+            );
 
-        // Only restore subbookingoptions (aka subbookings), if config setting is set.
-        if (get_config('booking', 'duplicationrestoresubbookings')) {
-            $paths[] = new restore_path_element('booking_subbookingoption',
-                '/activity/booking/options/option/subbookingoptions/subbookingoption');
+            $paths[] = new restore_path_element(
+                'booking_optiondate',
+                '/activity/booking/optiondates/optiondate'
+            );
+
+            // Only restore teachers, if config setting is set.
+            if (get_config('booking', 'duplicationrestoreteachers')) {
+                $paths[] = new restore_path_element(
+                    'booking_teacher',
+                    '/activity/booking/teachers/teacher'
+                );
+            }
+
+            // Only restore prices, if config setting is set.
+            if (get_config('booking', 'duplicationrestoreprices')) {
+                $paths[] = new restore_path_element(
+                    'booking_price',
+                    '/activity/booking/options/option/prices/price'
+                );
+            }
+
+            // Only restore entitiesrelations if config setting is set.
+            if (get_config('booking', 'duplicationrestoreentities')) {
+                // For options.
+                $paths[] = new restore_path_element(
+                    'booking_option_entity',
+                    '/activity/booking/options/option/entitiesrelationsforoptions/entitiesrelationforoption'
+                );
+                // For optiondates.
+                $paths[] = new restore_path_element(
+                    'booking_optiondate_entity',
+                    '/activity/booking/optiondates/optiondate/entitiesrelationsforoptiondates/entitiesrelationforoptiondate'
+                );
+            }
+
+            // Only restore subbookingoptions (aka subbookings), if config setting is set.
+            if (get_config('booking', 'duplicationrestoresubbookings')) {
+                $paths[] = new restore_path_element(
+                    'booking_subbookingoption',
+                    '/activity/booking/options/option/subbookingoptions/subbookingoption'
+                );
+            }
         }
 
         if ($userinfo) {
@@ -414,18 +449,49 @@ class restore_booking_activity_structure_step extends restore_activity_structure
     }
 
     /**
-     * Processes booking entity data.
+     * Processes booking entity data for booking options.
      *
      * @param array $data The instance data from the backup file.
      * @throws dml_exception
      */
-    protected function process_booking_entity($data) {
+    protected function process_booking_option_entity($data) {
         global $DB;
 
         // Make sure, we have local_entities installed.
         if (get_config('booking', 'duplicationrestoreentities') && class_exists('local_entities\entitiesrelation_handler')) {
             $data = (object) $data;
+            if ($data->area == 'optiondate') {
+                return;
+            }
+            if ($data->area != 'option') {
+                throw new moodle_exception('entityrelationhasinvalidarea');
+            }
             $data->instanceid = $this->get_mappingid('booking_option', $data->instanceid);
+            $data->timecreated = time();
+            $DB->insert_record('local_entities_relations', $data);
+            // No need to save this mapping as far as nothing depends on it.
+        }
+    }
+
+    /**
+     * Processes booking entity data for booking optiondates.
+     *
+     * @param array $data The instance data from the backup file.
+     * @throws dml_exception
+     */
+    protected function process_booking_optiondate_entity($data) {
+        global $DB;
+
+        // Make sure, we have local_entities installed.
+        if (get_config('booking', 'duplicationrestoreentities') && class_exists('local_entities\entitiesrelation_handler')) {
+            $data = (object) $data;
+            if ($data->area == 'option') {
+                return;
+            }
+            if ($data->area != 'optiondate') {
+                throw new moodle_exception('entityrelationhasinvalidarea');
+            }
+            $data->instanceid = $this->get_mappingid('booking_optiondate', $data->instanceid);
             $data->timecreated = time();
             $DB->insert_record('local_entities_relations', $data);
             // No need to save this mapping as far as nothing depends on it.

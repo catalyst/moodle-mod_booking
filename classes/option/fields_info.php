@@ -50,7 +50,6 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class fields_info {
-
      /**
       * This function runs through all installed field classes and executes the prepare save function.
       * Returns an array of warnings as string.
@@ -59,19 +58,21 @@ class fields_info {
       * @param int $updateparam
       * @return array
       */
-    public static function prepare_save_fields(stdClass &$formdata, stdClass &$newoption,
-        int $updateparam = MOD_BOOKING_UPDATE_OPTIONS_PARAM_DEFAULT): array {
+    public static function prepare_save_fields(
+        stdClass &$formdata,
+        stdClass &$newoption,
+        int $updateparam = MOD_BOOKING_UPDATE_OPTIONS_PARAM_DEFAULT
+    ): array {
 
-        $warnings = [];
+        $feedback = [];
         $error = [];
+        // TODO: implement error handling.
 
         $context = context_module::instance($formdata->cmid);
         $classes = self::get_field_classes($context->id);
 
         foreach ($classes as $classname) {
-
             if (class_exists($classname)) {
-
                 // We want to ignore some classes here.
                 if (self::ignore_class($formdata, $classname)) {
                     continue;
@@ -79,18 +80,18 @@ class fields_info {
 
                 // Execute the prepare function of every field.
                 try {
-                    $warning = $classname::prepare_save_field($formdata, $newoption, $updateparam);
+                    $returnvalue = $classname::prepare_save_field($formdata, $newoption, $updateparam);
                 } catch (\Exception $e) {
                     $error[] = $e;
                 }
 
-                if (!empty($warning)) {
-                    $warnings[] = $warning;
+                if (!empty($returnvalue)) {
+                    $feedback[$classname] = $returnvalue;
                 }
             }
         }
 
-        return $warnings;
+        return $feedback;
     }
 
     /**
@@ -103,6 +104,25 @@ class fields_info {
             return substr($classname, $pos + 1);
         }
         return $pos;
+    }
+
+    /**
+     * A quick way to get namespace from classname.
+     * @param string $classname
+     * @return string
+     */
+    public static function get_namespace_from_class_name($classname) {
+        $namespace = "";
+        if ($classname == "dates") {
+            $classname = "optiondates";
+        } else if ($classname == "enrolementstatus") {
+            $classname = "enrolmentstatus";
+        }
+        $base = 'mod_booking\\option\\fields\\' . $classname;
+        if (class_exists($base)) {
+            return $base;
+        }
+        return $namespace;
     }
 
     /**
@@ -125,6 +145,12 @@ class fields_info {
                 break;
             case MOD_BOOKING_HEADER_BOOKINGOPTIONTEXT:
                 $headericon = '<i class="fa fa-fw fa-comments" aria-hidden="true"></i>';
+                break;
+            case MOD_BOOKING_HEADER_COURSES:
+                $headericon = '<i class="fa fa-fw fa-graduation-cap" aria-hidden="true"></i>';
+                break;
+            case MOD_BOOKING_HEADER_DATES:
+                $headericon = '<i class="fa fa-fw fa-calendar" aria-hidden="true"></i>';
                 break;
             // TODO: Add icons for the other headers here...
         }
@@ -171,14 +197,18 @@ class fields_info {
 
         $classes = self::get_field_classes($context->id);
 
-        foreach ($classes as $classname) {
-
-            // We want to ignore some classes here.
-            if (self::ignore_class((object)$formdata, $classname)) {
-                continue;
+        if (empty($classes)) {
+            $mform->addElement('html', '<div class="alert alert-warning">' .
+                get_string('error:formcapabilitymissing', 'mod_booking') .
+                '</div>');
+        } else {
+            foreach ($classes as $classname) {
+                // We want to ignore some classes here.
+                if (self::ignore_class((object)$formdata, $classname)) {
+                    continue;
+                }
+                $classname::instance_form_definition($mform, $formdata, []);
             }
-
-            $classname::instance_form_definition($mform, $formdata, []);
         }
     }
 
@@ -195,7 +225,6 @@ class fields_info {
         $classes = self::get_field_classes($context->id);
 
         foreach ($classes as $classname) {
-
             // We want to ignore some classes here.
             if (self::ignore_class((object)$data, $classname)) {
                 continue;
@@ -210,22 +239,21 @@ class fields_info {
      * @param stdClass $formdata
      * @param stdClass $option
      * @param int $updateparam
-     * @return void
+     * @return array
      */
-    public static function save_fields_post(stdClass &$formdata, stdClass &$option, int $updateparam) {
+    public static function save_fields_post(stdClass &$formdata, stdClass &$option, int $updateparam): array {
 
         $context = context_module::instance($formdata->cmid);
         $classes = self::get_field_classes($context->id, MOD_BOOKING_EXECUTION_POSTSAVE);
-
+        $changes = [];
         foreach ($classes as $classname) {
-
             // We want to ignore some classes here.
             if (self::ignore_class($formdata, $classname)) {
                 continue;
             }
-
-            $classname::save_data($formdata, $option);
+            $changes[$classname] = $classname::save_data($formdata, $option);
         }
+        return $changes;
     }
 
     /**
@@ -251,7 +279,6 @@ class fields_info {
 
         try {
             foreach ($classes as $classname) {
-
                 // We want to ignore some classes here.
                 if (self::ignore_class($data, $classname)) {
                     continue;
@@ -289,7 +316,6 @@ class fields_info {
         $classes = self::get_field_classes($context->id);
 
         foreach ($classes as $classname) {
-
             // We want to ignore some classes here.
             if (self::ignore_class($formdata, $classname)) {
                 continue;
@@ -319,7 +345,6 @@ class fields_info {
         $classes = [];
         $namespace = "mod_booking\\option\\fields\\";
         foreach ($fields as $field) {
-
             $classname = $namespace . $field->classname;
 
             // We might only want postsave classes.
@@ -364,9 +389,10 @@ class fields_info {
             $shortclassname = array_pop($array);
 
             // If the class is not necessary and not part of the imported fields, ignore it.
-            if (!in_array(MOD_BOOKING_OPTION_FIELD_NECESSARY, $classname::$fieldcategories)
-                && !isset($data->{$shortclassname})) {
-
+            if (
+                !in_array(MOD_BOOKING_OPTION_FIELD_NECESSARY, $classname::$fieldcategories)
+                && !isset($data->{$shortclassname})
+            ) {
                 if ($classname::$id === MOD_BOOKING_OPTION_FIELD_PRICE) {
                     // TODO: if a column is called like any price category.
                     $existingpricecategories = $DB->get_records('booking_pricecategories', ['disabled' => 0]);

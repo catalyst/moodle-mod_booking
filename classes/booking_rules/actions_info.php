@@ -47,7 +47,7 @@ class actions_info {
      */
     public static function add_actions_to_mform(MoodleQuickForm &$mform,
         array &$repeateloptions,
-        array &$ajaxformdata = null) {
+        ?array &$ajaxformdata = null) {
 
         $actions = self::get_actions();
 
@@ -62,16 +62,16 @@ class actions_info {
             }
             $actionsforselect[$shortclassname] = $action->get_name_of_action();
         }
-
+        $actionsforselect = array_reverse($actionsforselect);
         $mform->registerNoSubmitButton('btn_bookingruleactiontype');
         $buttonargs = ['style' => 'visibility:hidden;'];
-        $categoryselect = [
-            $mform->createElement('select', 'bookingruleactiontype',
-            get_string('bookingruleaction', 'mod_booking'), $actionsforselect),
-            $mform->createElement('submit', 'btn_bookingruleactiontype', get_string('bookingruleaction',
-                'mod_booking'), $buttonargs),
-        ];
-        $mform->addGroup($categoryselect, 'bookingruleactiontype', get_string('bookingruleaction', 'mod_booking'), [' '], false);
+        $mform->addElement('select', 'bookingruleactiontype',
+            get_string('bookingruleaction', 'mod_booking'), $actionsforselect);
+        if (isset($ajaxformdata['bookingruleactiontype'])) {
+            $mform->setDefault('bookingruleactiontype', $ajaxformdata['bookingruleactiontype']);
+        }
+        $mform->addElement('submit', 'btn_bookingruleactiontype',
+            get_string('bookingruleaction', 'mod_booking'), $buttonargs);
         $mform->setType('btn_bookingruleactiontype', PARAM_NOTAGS);
 
         foreach ($actions as $action) {
@@ -80,7 +80,7 @@ class actions_info {
 
                 $actionname = $action->get_name_of_action();
                 if ($ajaxformdata['bookingruleactiontype']
-                    && $actionname == get_string($ajaxformdata['bookingruleactiontype'], 'mod_booking')) {
+                    && $actionname == get_string(str_replace("_", "", $ajaxformdata['bookingruleactiontype']), 'mod_booking')) {
                     // For each rule, add the appropriate form fields.
                     $action->add_action_to_mform($mform, $repeateloptions);
                 }

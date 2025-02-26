@@ -26,6 +26,7 @@ namespace mod_booking\output;
 
 use context_system;
 use context_module;
+use context_user;
 use mod_booking\booking_answers;
 use mod_booking\singleton_service;
 use moodle_url;
@@ -114,12 +115,23 @@ class page_teacher implements renderable, templatable {
         // Get all booking options where the teacher is teaching and sort them by instance.
         $teacheroptiontables = $this->get_option_tables_for_teacher($this->teacher->id);
 
+        $context = context_user::instance($this->teacher->id, MUST_EXIST);
+        $descriptiontext = file_rewrite_pluginfile_urls(
+            $this->teacher->description,
+            'pluginfile.php',
+            $context->id,
+            'user',
+            'profile',
+            null,
+        );
+
         $returnarray['teacher'] = [
             'teacherid' => $this->teacher->id,
             'firstname' => $this->teacher->firstname,
             'lastname' => $this->teacher->lastname,
-            'description' => format_text($this->teacher->description, $this->teacher->descriptionformat),
+            'description' => format_text($descriptiontext, $this->teacher->descriptionformat),
             'optiontables' => $teacheroptiontables,
+            'canedit' => has_capability('mod/booking:editteacherdescription', $context),
         ];
 
         // If the user has set to hide e-mails, we won't show them.
@@ -142,9 +154,12 @@ class page_teacher implements renderable, templatable {
             $imageurl = $picture->get_url($PAGE);
             $returnarray['image'] = $imageurl;
         }
-
-        if (self::teacher_messaging_is_possible($this->teacher->id)) {
-            $returnarray['messagingispossible'] = true;
+        if (!empty($CFG->messaging)) {
+            if (self::teacher_messaging_is_possible($this->teacher->id)) {
+                $returnarray['messagingispossible'] = true;
+            }
+        } else {
+            $returnarray['messagesdeactivated'] = true;
         }
 
         // Add a link to the report of performed teaching units.
@@ -152,6 +167,15 @@ class page_teacher implements renderable, templatable {
         if ((has_capability('mod/booking:updatebooking', $PAGE->context))) {
             $url = new moodle_url('/mod/booking/teacher_performed_units_report.php', ['teacherid' => $this->teacher->id]);
             $returnarray['linktoperformedunitsreport'] = $url->out();
+        }
+        if ((has_capability('mod/booking:seepersonalteacherinformation', $PAGE->context))) {
+            // Add given phonenumbers.
+            if (!empty($this->teacher->phone1)) {
+                $returnarray['teacher']['phones'][] = $this->teacher->phone1;
+            }
+            if (!empty($this->teacher->phone2)) {
+                $returnarray['teacher']['phones'][] = $this->teacher->phone2;
+            }
         }
         // Include wwwroot for links.
         $returnarray['wwwroot'] = $CFG->wwwroot;
@@ -218,7 +242,8 @@ class page_teacher implements renderable, templatable {
                 $class = $firsttable ? 'active show' : '';
                 $firsttable = false;
 
-                $tablename = preg_replace("/[^a-z]/", '', $booking->settings->name);
+                // Keep only lowercaseletters and digits.
+                $tablename = preg_replace("/[^a-z0-9]/", '', strtolower($booking->settings->name));
 
                 $newtable = [
                     'bookingid' => $bookingid,

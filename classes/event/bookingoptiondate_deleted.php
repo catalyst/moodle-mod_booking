@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * The bookingoptiondate_created event.
+ * The bookingoptiondate_deleted event.
  *
  * @package mod_booking
  * @copyright 2021 Bernhard Fischer, https://www.wunderbyte.at
@@ -53,7 +53,7 @@ class bookingoptiondate_deleted extends \core\event\base {
      *
      */
     public static function get_name() {
-        return get_string('bookingoptiondate_deleted', 'booking');
+        return get_string('bookingoptiondatedeleted', 'booking');
     }
 
     /**

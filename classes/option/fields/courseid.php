@@ -25,8 +25,8 @@
 namespace mod_booking\option\fields;
 
 use context_course;
-use core_course_external;
 use mod_booking\booking_option_settings;
+use mod_booking\local\connectedcourse;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
 use mod_booking\singleton_service;
@@ -42,7 +42,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class courseid extends field_base {
-
     /**
      * This ID is used for sorting execution.
      * @var int
@@ -61,7 +60,7 @@ class courseid extends field_base {
      * This identifies the header under which this particular field should be displayed.
      * @var string
      */
-    public static $header = MOD_BOOKING_HEADER_GENERAL;
+    public static $header = MOD_BOOKING_HEADER_COURSES;
 
     /**
      * An int value to define if this field is standard or used in a different context.
@@ -76,6 +75,8 @@ class courseid extends field_base {
     public static $alternativeimportidentifiers = [
         'enroltocourseshortname',
         'courseid',
+        'coursenumber',
+        'chooseorcreatecourse',
     ];
 
     /**
@@ -90,71 +91,39 @@ class courseid extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null
+    ): array {
 
         global $DB;
 
-        /* Create a new course and put it either in a new course category
-        or in an already existing one. */
-        if (!empty($formdata->courseid) && $formdata->courseid == -1) {
-            $categoryid = 1; // By default, we use the first category.
-            if (!empty(get_config('booking', 'newcoursecategorycfield'))) {
-                // FEATURE add more settingfields add customfield_ to ...
-                // ... settingsvalue from customfields allwo only Textfields or Selects.
-                $cfforcategory = 'customfield_' . get_config('booking', 'newcoursecategorycfield');
-                $category = new stdClass();
-                $category->name = $formdata->{$cfforcategory};
-
-                if (!empty($category->name)) {
-                    $categories = core_course_external::get_categories([
-                            ['key' => 'name', 'value' => $category->name],
-                    ]);
-
-                    if (empty($categories)) {
-                        $category->idnumber = $category->name;
-                        $categories = [
-                                ['name' => $category->name, 'idnumber' => $category->idnumber, 'parent' => 0],
-                        ];
-                        $createdcats = core_course_external::create_categories($categories);
-                        $categoryid = $createdcats[0]['id'];
-                    } else {
-                        $categoryid = $categories[0]['id'];
-                    }
-                }
-            }
-
-            // Create course.
-            $fullnamewithprefix = '';
-            if (!empty($formdata->titleprefix)) {
-                $fullnamewithprefix .= $formdata->titleprefix . ' - ';
-            }
-            $fullnamewithprefix .= $formdata->text;
-
-            // Courses need to have unique shortnames.
-            $i = 1;
-            $shortname = $fullnamewithprefix;
-            while ($DB->get_record('course', ['shortname' => $shortname])) {
-                $shortname = $fullnamewithprefix . '_' . $i;
-                $i++;
-            };
-            $newcourse['fullname'] = $fullnamewithprefix;
-            $newcourse['shortname'] = $shortname;
-            $newcourse['categoryid'] = $categoryid;
-
-            $courses = [$newcourse];
-            $createdcourses = core_course_external::create_courses($courses);
-            $newoption->courseid = $createdcourses[0]['id'];
-            $formdata->courseid = $newoption->courseid;
+        if (is_array($formdata->courseid)) {
+            $formdata->courseid = reset($formdata->courseid);
         }
 
-        return parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+        /* Create a new course and put it either in a new course category
+        or in an already existing one. */
+        connectedcourse::handle_user_choice($newoption, $formdata);
+
+        // If the course does not exist anymore, we set it back to 0.
+        if (!$DB->record_exists('course', ['id' => $newoption->courseid])) {
+            $newoption->courseid = 0;
+            $formdata->chooseorcreatecourse = 0;
+        }
+
+        $formdata->courseid = $newoption->courseid;
+
+        parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+
+        $instance = new courseid();
+        $changes = $instance->check_for_changes($formdata, $instance);
+        return $changes;
     }
 
     /**
@@ -167,11 +136,9 @@ class courseid extends field_base {
     public static function validation(array $data, array $files, array &$errors) {
 
         global $DB;
-        // Minus 1 (-1) means we need to create a new course, that's ok.
-        if (!empty($data['courseid']) && $data['courseid'] != -1) {
-            if (!$DB->record_exists('course', ['id' => $data['courseid']])) {
-                $errors['courseid'] = get_string('coursedoesnotexist', 'mod_booking', $data['courseid']);
-            }
+
+        if (is_array($data['courseid'])) {
+            $data['courseid'] = reset($data['courseid']);
         }
 
         return $errors;
@@ -182,19 +149,38 @@ class courseid extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
+
+        $options = [
+            0 => get_string('nomoodlecourseconnection', 'mod_booking'),
+            1 => get_string('connectedmoodlecourse', 'mod_booking'),
+            2 => get_string('createnewmoodlecourse', 'mod_booking'),
+            3 => get_string('createnewmoodlecoursefromtemplate', 'mod_booking'),
+        ];
+
+        $mform->addElement('select', 'chooseorcreatecourse', get_string("connectedmoodlecourse", "booking"), $options);
 
         $options = [
             'tags' => false,
             'multiple' => false,
             'ajax' => 'mod_booking/form_courses_selector',
             'noselectionstring' => get_string('nocourseselected', 'mod_booking'),
-            'valuehtmlcallback' => function($value) {
+            'valuehtmlcallback' => function ($value) {
                 if (isset($coursearray[$value])) {
                     return $coursearray[$value];
                 } else {
@@ -223,7 +209,9 @@ class courseid extends field_base {
                         } else {
                             // The course exists, so show it.
                             return $OUTPUT->render_from_template(
-                                'mod_booking/form-course-selector-suggestion', $courserecord);
+                                'mod_booking/form-course-selector-suggestion',
+                                $courserecord
+                            );
                         }
                     } else {
                         return get_string('courseduplicating', 'mod_booking');
@@ -234,6 +222,30 @@ class courseid extends field_base {
 
         $mform->addElement('autocomplete', 'courseid', get_string("connectedmoodlecourse", "booking"), [], $options);
         $mform->addHelpButton('courseid', 'connectedmoodlecourse', 'mod_booking');
+        $mform->hideIf('courseid', 'chooseorcreatecourse', 'neq', 1);
+
+        $templatetags = get_config('booking', 'templatetags');
+        $tags = explode(',', $templatetags);
+
+        $options = [
+            'tags' => false,
+            'multiple' => false,
+            'ajax' => 'mod_booking/form_templates_selector',
+            'noselectionstring' => get_string('nocourseselected', 'mod_booking'),
+            'valuehtmlcallback' => function ($a) {
+                return get_string('nocourseselected', 'mod_booking');
+            },
+        ];
+
+        $mform->addElement(
+            'autocomplete',
+            'coursetemplateid',
+            get_string("createnewmoodlecoursefromtemplate", "mod_booking"),
+            [],
+            $options
+        );
+        $mform->hideIf('coursetemplateid', 'chooseorcreatecourse', 'neq', 3);
+        $mform->addHelpButton('coursetemplateid', 'createnewmoodlecoursefromtemplate', 'mod_booking');
     }
 
     /**
@@ -250,13 +262,11 @@ class courseid extends field_base {
         if (!empty($data->importing)) {
             // We might import the courseid with a different key.
             if (!empty($data->coursenumber) && is_numeric($data->coursenumber)) {
-
                 $data->courseid = $data->coursenumber;
             }
 
             // We also support the enroltocourseshortname.
             if (!empty($data->enroltocourseshortname)) {
-
                 if ($courseid = $DB->get_field('course', 'id', ['shortname' => $data->enroltocourseshortname])) {
                     $data->courseid = $courseid;
                     unset($data->enroltocourseshortname);
@@ -266,9 +276,9 @@ class courseid extends field_base {
                         'mod_booking',
                         '',
                         $data->enroltocourseshortname,
-                        'Course not found: ' . $data->enroltocourseshortname);
+                        'Course not found: ' . $data->enroltocourseshortname
+                    );
                 }
-
             }
         } else {
             $key = fields_info::get_class_name(static::class);
@@ -285,6 +295,11 @@ class courseid extends field_base {
 
             // If there is no $newcourseid, then the old courseid ($settings->{$key}) will be taken.
             $value = $newcourseid ?? $settings->{$key} ?? null;
+
+            if (!empty($value)) {
+                $data->chooseorcreatecourse = 1;
+            }
+
             $data->{$key} = $value;
         }
     }
@@ -310,7 +325,7 @@ class courseid extends field_base {
         $oldcourse = get_course($oldcourseid);
 
         // Gather copy data.
-        $copydata = new stdClass;
+        $copydata = new stdClass();
         $copydata->courseid = $oldcourseid;
         $copydata->fullname = $oldcourse->fullname . " (" . get_string('copy', 'mod_booking') . ")";
         $copydata->shortname = $oldcourse->shortname . "_" . strtolower(get_string('copy', 'mod_booking'));
@@ -344,17 +359,35 @@ class courseid extends field_base {
         require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
 
         // Create the initial backupcontoller.
-        $bc = new \backup_controller(\backup::TYPE_1COURSE, $copydata->courseid, \backup::FORMAT_MOODLE,
-            \backup::INTERACTIVE_NO, \backup::MODE_COPY, $USER->id, \backup::RELEASESESSION_YES);
+        $bc = new \backup_controller(
+            \backup::TYPE_1COURSE,
+            $copydata->courseid,
+            \backup::FORMAT_MOODLE,
+            \backup::INTERACTIVE_NO,
+            \backup::MODE_COPY,
+            $USER->id,
+            \backup::RELEASESESSION_YES
+        );
         $copyids['backupid'] = $bc->get_backupid();
 
         // Create the initial restore contoller.
-        list($fullname, $shortname) = \restore_dbops::calculate_course_names(
-            0, get_string('copyingcourse', 'backup'), get_string('copyingcourseshortname', 'backup'));
+        [$fullname, $shortname] = \restore_dbops::calculate_course_names(
+            0,
+            get_string('copyingcourse', 'backup'),
+            get_string('copyingcourseshortname', 'backup')
+        );
         $newcourseid = \restore_dbops::create_new_course($fullname, $shortname, $copydata->category);
-        $rc = new \restore_controller($copyids['backupid'], $newcourseid, \backup::INTERACTIVE_NO,
-            \backup::MODE_COPY, $USER->id, \backup::TARGET_NEW_COURSE, null,
-            \backup::RELEASESESSION_NO, $copydata);
+        $rc = new \restore_controller(
+            $copyids['backupid'],
+            $newcourseid,
+            \backup::INTERACTIVE_NO,
+            \backup::MODE_COPY,
+            $USER->id,
+            \backup::TARGET_NEW_COURSE,
+            null,
+            \backup::RELEASESESSION_NO,
+            $copydata
+        );
         $copyids['restoreid'] = $rc->get_restoreid();
 
         $bc->set_status(\backup::STATUS_AWAITING);
@@ -363,7 +396,6 @@ class courseid extends field_base {
 
         // Create the ad-hoc task to perform the course copy.
         $asynctask = new \core\task\asynchronous_copy_task();
-        $asynctask->set_blocking(false);
         $asynctask->set_custom_data($copyids);
         \core\task\manager::queue_adhoc_task($asynctask);
 

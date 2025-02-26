@@ -13,6 +13,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
 /**
  * Handling of sending confirmation mains.
  *
@@ -50,7 +51,7 @@ class send_confirmation_mails extends \core\task\adhoc_task {
      * @var \stdClass
      */
     public function get_name() {
-        return get_string('task_send_confirmation_mails', 'mod_booking');
+        return get_string('tasksendconfirmationmails', 'mod_booking');
     }
 
     /**
@@ -60,6 +61,12 @@ class send_confirmation_mails extends \core\task\adhoc_task {
      */
     public function execute() {
         global $CFG, $DB;
+
+        if (empty(get_config('booking', 'uselegacymailtemplates'))) {
+            mtrace("Legacy mails are turned off, this task should be deactivated.");
+            return;
+        }
+
         $taskdata = $this->get_custom_data();
 
         mtrace('send_confirmation_mails task started');
@@ -104,9 +111,12 @@ class send_confirmation_mails extends \core\task\adhoc_task {
                                     'context' => context_system::instance(),
                                     'userid' => $taskdata->userto->id,
                                     'relateduserid' => $taskdata->userfrom->id,
+                                    'objectid' => $taskdata->optionid ?? 0,
                                     'other' => [
                                         'messageparam' => $taskdata->messageparam,
                                         'subject' => $taskdata->subject,
+                                        'objectid' => $taskdata->optionid ?? 0,
+                                        'message' => $taskdata->messagetext ?? 0,
                                     ],
                                 ]);
                                 $event->trigger();

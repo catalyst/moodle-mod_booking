@@ -40,7 +40,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class price extends field_base {
-
     /**
      * This ID is used for sorting execution.
      * @var int
@@ -87,14 +86,15 @@ class price extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
-     * @return string // If no warning, empty string.
+     * @param ?mixed $returnvalue
+     * @return array // Changes are reported via the event in price class.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null
+    ): array {
 
         // We store the information if we use a price in the JSON.
         // So this has to happen BEFORE JSON is saved!
@@ -105,7 +105,11 @@ class price extends field_base {
             booking_option::add_data_to_json($newoption, "useprice", 1); // 11 means we have a price.
         }
 
-        return parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+        parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+
+        // For changes in price fields, the bookingoption_updated event is triggered separately...
+        // ...  in price class (price::add_price()). Hence no changes to report here.
+        return [];
     }
 
     /**
@@ -113,9 +117,17 @@ class price extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Add price.
         $price = new Mod_bookingPrice('option', $formdata['id']);
@@ -131,7 +143,6 @@ class price extends field_base {
      */
     public static function validation(array $data, array $files, array &$errors) {
 
-        // Save the prices.
         $price = new Mod_bookingPrice('option', $data['id']);
         $price->validation($data, $errors);
     }
@@ -172,7 +183,6 @@ class price extends field_base {
         $priceitems = Mod_bookingPrice::get_prices_from_cache_or_db('option', $data->id);
 
         if (!empty($data->importing)) {
-
             // This is for IMPORTING!
 
             if (!is_array($pricehandler->pricecategories)) {
@@ -180,22 +190,22 @@ class price extends field_base {
             }
 
             foreach ($pricehandler->pricecategories as $category) {
-
                 // If we have an imported value, we use it here.
                 // To do this, we look in data for the price category identifier.
-                if (!empty($data->{$category->identifier}) && is_numeric($data->{$category->identifier})) {
+                if (isset($data->{$category->identifier}) && is_numeric($data->{$category->identifier})) {
                     $price = $data->{$category->identifier};
                     // We don't want this value to be used elsewhere.
                 } else {
                     // Make sure that if prices exist, we do not lose them.
                     $items = array_filter($priceitems, fn($a) => $a->pricecategoryidentifier == $category->identifier);
                     $item = reset($items);
-                    $price = $item->price ?? $category->defaultvalue ?? 0;
+                    $price = $item->price ?? $category->defaultvalue ?? null;
                 }
 
-                if (!empty($price)) {
-                    $pricegroup = MOD_BOOKING_FORM_PRICEGROUP . $category->identifier;
-                    $priceidentifier = MOD_BOOKING_FORM_PRICE . $category->identifier;
+                if ($price !== null) {
+                    $encodedkey = bin2hex($category->identifier);
+                    $pricegroup = MOD_BOOKING_FORM_PRICEGROUP . $encodedkey;
+                    $priceidentifier = MOD_BOOKING_FORM_PRICE . $encodedkey;
                     $data->{$pricegroup}[$priceidentifier] = $price;
                 }
             }
@@ -216,9 +226,7 @@ class price extends field_base {
             if (!isset($data->useprice)) {
                 $data->useprice = $settings->useprice ?? 0;
             }
-
         } else {
-
             $useprice = booking_option::get_value_of_json_by_key($data->id, "useprice");
 
             // If the value is not set in JSON, we activate useprice if a price was found for the option.

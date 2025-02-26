@@ -24,11 +24,14 @@
 
 namespace mod_booking\output;
 
+use mod_booking\booking_option;
 use moodle_exception;
 use renderer_base;
 use renderable;
 use templatable;
 use mod_booking\option\dates_handler;
+use mod_booking\price;
+use mod_booking\singleton_service;
 
 /**
  * This class prepares data for displaying a booking instance
@@ -38,7 +41,6 @@ use mod_booking\option\dates_handler;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class col_coursestarttime implements renderable, templatable {
-
     /** @var array $datestrings */
     public $datestrings = null;
 
@@ -47,6 +49,21 @@ class col_coursestarttime implements renderable, templatable {
 
     /** @var bool $showcollapsebtn */
     public $showcollapsebtn = null;
+
+    /** @var bool $selflearningcourse */
+    public $selflearningcourse = null;
+
+    /** @var string $duration */
+    public $duration = null;
+
+    /** @var string $timeremaining */
+    public $timeremaining = null;
+
+    /** @var bool $selflearningcourseshowdurationinfo */
+    private $selflearningcourseshowdurationinfo = null;
+
+    /** @var bool $selflearningcourseshowdurationinfoexpired */
+    private $selflearningcourseshowdurationinfoexpired = null;
 
     /**
      * Constructor
@@ -57,7 +74,7 @@ class col_coursestarttime implements renderable, templatable {
      * @param bool $collapsed set to true, if dates should be collapsed
      *
      */
-    public function __construct($optionid, $booking=null, $cmid = null, $collapsed = true) {
+    public function __construct($optionid, $booking = null, $cmid = null, $collapsed = true) {
 
         if (empty($booking) && empty($cmid)) {
             throw new moodle_exception('Error: either booking instance or cmid have to be provided.');
@@ -65,14 +82,47 @@ class col_coursestarttime implements renderable, templatable {
             $cmid = $booking->cm->id;
         }
 
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
         $this->optionid = $optionid;
-        $this->datestrings = dates_handler::return_array_of_sessions_simple($optionid);
 
-        $maxdates = get_config('booking', 'collapseshowsettings') ?? 2; // Hardcoded fallback on two.
+        // For self-learning courses, we do not show any optiondates (sessions).
+        if (!empty($settings->selflearningcourse)) {
 
-        // Show a collapse button for the dates.
-        if (!empty($this->datestrings) && count($this->datestrings) > $maxdates && $collapsed == true) {
-            $this->showcollapsebtn = true;
+            $this->selflearningcourse = true;
+
+            if (get_config('booking', 'selflearningcoursehideduration')) {
+                $this->selflearningcourseshowdurationinfo = null;
+            } else if (!empty($settings->duration)) {
+                // We do not show duration info if it is set to 0.
+                $this->selflearningcourseshowdurationinfo = true;
+
+                // Format the duration correctly.
+                $this->duration = format_time($settings->duration);
+
+                $ba = singleton_service::get_instance_of_booking_answers($settings);
+                $buyforuser = price::return_user_to_buy_for();
+                if (isset($ba->usersonlist[$buyforuser->id])) {
+                    $timebooked = $ba->usersonlist[$buyforuser->id]->timecreated;
+                    $timeremainingsec = $timebooked + $settings->duration - time();
+
+                    if ($timeremainingsec <= 0) {
+                        $this->selflearningcourseshowdurationinfo = null;
+                        $this->selflearningcourseshowdurationinfoexpired = true;
+                    } else {
+                        $this->timeremaining = format_time($timeremainingsec);
+                    }
+                }
+            }
+        } else {
+            // No self-learning course.
+            $this->datestrings = dates_handler::return_array_of_sessions_simple($optionid);
+
+            $maxdates = get_config('booking', 'collapseshowsettings') ?? 2; // Hardcoded fallback on two.
+
+            // Show a collapse button for the dates.
+            if (!empty($this->datestrings) && count($this->datestrings) > $maxdates && $collapsed == true) {
+                $this->showcollapsebtn = true;
+            }
         }
     }
 
@@ -85,7 +135,19 @@ class col_coursestarttime implements renderable, templatable {
      *
      */
     public function export_for_template(renderer_base $output) {
-        if (!$this->datestrings) {
+
+        if (!empty($this->selflearningcourse)) {
+            $returnarr['selflearningcourse'] = $this->selflearningcourse;
+            $returnarr['duration'] = $this->duration;
+            $returnarr['selflearningcourseshowdurationinfo'] = $this->selflearningcourseshowdurationinfo;
+            $returnarr['selflearningcourseshowdurationinfoexpired'] = $this->selflearningcourseshowdurationinfoexpired;
+            if (!empty($this->timeremaining)) {
+                $returnarr['timeremaining'] = $this->timeremaining;
+            }
+            return $returnarr;
+        }
+
+        if (empty($this->datestrings)) {
             return [];
         }
 

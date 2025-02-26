@@ -46,6 +46,9 @@ class enter_userprofilefield implements booking_rule_condition {
     /** @var string $conditionname */
     public $conditionname = 'enter_userprofilefield';
 
+    /** @var string $conditionnamestringid Id of localized string for name of rule condition*/
+    protected $conditionnamestringid = 'enteruserprofilefield';
+
     /** @var string $cpfield */
     public $cpfield = null;
 
@@ -93,10 +96,10 @@ class enter_userprofilefield implements booking_rule_condition {
      * Add condition to mform.
      *
      * @param MoodleQuickForm $mform
-     * @param array $ajaxformdata
+     * @param ?array $ajaxformdata
      * @return void
      */
-    public function add_condition_to_mform(MoodleQuickForm &$mform, array &$ajaxformdata = null) {
+    public function add_condition_to_mform(MoodleQuickForm &$mform, ?array &$ajaxformdata = null) {
         global $DB;
 
         // Custom user profile field to be checked.
@@ -111,17 +114,17 @@ class enter_userprofilefield implements booking_rule_condition {
             }
 
             $mform->addElement('select', 'condition_enter_userprofilefield_cpfield',
-                get_string('rule_customprofilefield', 'mod_booking'), $customuserprofilefieldsarray);
+                get_string('rulecustomprofilefield', 'mod_booking'), $customuserprofilefieldsarray);
 
             $operators = [
                 '=' => get_string('equals', 'mod_booking'),
                 '~' => get_string('contains', 'mod_booking'),
             ];
             $mform->addElement('select', 'condition_enter_userprofilefield_operator',
-                get_string('rule_operator', 'mod_booking'), $operators);
+                get_string('ruleoperator', 'mod_booking'), $operators);
 
             $mform->addElement('text', 'condition_enter_userprofilefield_textfield',
-                get_string('condition_textfield', 'mod_booking'));
+                get_string('conditiontextfield', 'mod_booking'));
             $mform->setType('condition_enter_userprofilefield_textfield', PARAM_TEXT);
         }
     }
@@ -133,7 +136,7 @@ class enter_userprofilefield implements booking_rule_condition {
      * @return string the name of the rule
      */
     public function get_name_of_condition($localized = true) {
-        return $localized ? get_string($this->conditionname, 'mod_booking') : $this->conditionname;
+        return $localized ? get_string($this->conditionnamestringid, 'mod_booking') : $this->conditionname;
     }
 
     /**

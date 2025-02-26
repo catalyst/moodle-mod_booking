@@ -89,29 +89,43 @@ class bookingclosingtime extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         $key = fields_info::get_class_name(static::class);
         $value = $formdata->{$key} ?? null;
 
+        $instance = new bookingclosingtime();
+        $changes = $instance->check_for_changes($formdata, $instance, null, $key, $value);
+
         if (empty($formdata->restrictanswerperiodclosing)) {
             $newoption->{$key} = 0;
+            $formdata->restrictanswerperiodclosing = 0;
+            if (empty($changes['changes']['oldvalue'])) {
+                return [];
+            }
+            $changes['changes']['newvalue'] = 0;
         } else {
             if (!empty($value)) {
                 $newoption->{$key} = $value;
+                if (!empty($formdata->bo_cond_booking_time_sqlfiltercheck)) {
+                    $newoption->sqlfilter = MOD_BOOKING_SQL_FILTER_ACTIVE_BO_TIME;
+                } else if (!isset($newoption->sqlfilter)) {
+                    $newoption->sqlfilter = MOD_BOOKING_SQL_FILTER_INACTIVE;
+                }
             } else {
                 $newoption->{$key} = 0;
             }
         }
 
-        return '';
+        // We can return an changes here.
+        return $changes;
     }
 
     /**
@@ -131,9 +145,17 @@ class bookingclosingtime extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
     }
 
@@ -156,11 +178,14 @@ class bookingclosingtime extends field_base {
                 $data->{$key} = $value;
                 $data->restrictanswerperiodclosing = 1;
             }
+            if (($data->sqlfilter ?? 0) == MOD_BOOKING_SQL_FILTER_ACTIVE_BO_TIME) {
+                $data->bo_cond_booking_time_sqlfiltercheck = 1;
+            }
 
         } else {
 
             // Normally, we don't call set data after the first time loading.
-            if (isset($data->{$key})) {
+            if (isset($data->{$key}) && !empty($data->{$key})) {
                 $data->restrictanswerperiodclosing = 1;
                 return;
             }
@@ -172,6 +197,9 @@ class bookingclosingtime extends field_base {
             // We need to also set the checkbox correctly.
             if (!empty($value)) {
                 $data->restrictanswerperiodclosing = 1;
+            }
+            if ($settings->sqlfilter == MOD_BOOKING_SQL_FILTER_ACTIVE_BO_TIME) {
+                $data->bo_cond_booking_time_sqlfiltercheck = 1;
             }
         }
     }

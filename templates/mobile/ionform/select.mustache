@@ -1,0 +1,30 @@
+{{=<% %>=}}
+
+<%#arguments%>
+            <% key %>
+            <br>
+            <% value %>
+<%/arguments%>
+
+<div>
+  <%#myform%>
+    <ion-item>
+      <ion-select 
+        aria-label="true" 
+        placeholder="<% label %>"
+        name="<% name %>"
+        value="<% selectedvalue %>"
+        [(ngModel)]='CONTENT_OTHERDATA.data["<% name %>"]'
+      >
+        <%# values %>
+          <ion-select-option value="<% key_select %>"><% value_select %></ion-select-option>
+        <%/ values %>
+      </ion-select>
+      <%# error %>
+        <ion-text color="danger">
+          <% error %>
+        </ion-text>
+      <%/ error %>
+    </ion-item>
+  <%/myform%>
+</div>

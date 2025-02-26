@@ -26,6 +26,7 @@
 
 namespace mod_booking\bo_availability;
 
+use mod_booking\booking_option;
 use mod_booking\booking_option_settings;
 use MoodleQuickForm;
 use stdClass;
@@ -145,4 +146,20 @@ interface bo_condition {
      */
     public function render_button(booking_option_settings $settings,
         int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array;
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array;
+
+    /**
+     * Returns the id of the condition.
+     *
+     * @return int
+     */
+    public function get_id(): int;
 }

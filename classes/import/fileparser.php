@@ -321,7 +321,7 @@ class fileparser {
             $this->records['numberofsuccessfullyupdatedrecords'] = count($this->records) - 1;
             // If data was parsed successfully, return 1, else return 0.
             $this->records['success'] = 1;
-            $this->trigger_records_imported_event(count($this->records) - 1);
+            $this->trigger_records_imported_event($this->records['numberofsuccessfullyupdatedrecords']);
 
         } else {
             $this->records['success'] = 0;
@@ -348,6 +348,14 @@ class fileparser {
      */
     private function validate_data($csvrecord, $line) {
         // Validate data.
+
+        // We want to have at least one column with data, even when nothing is mandatory.
+        $foundvalues = array_filter($line, fn($a) => !empty($a));
+        if (empty($foundvalues)) {
+            $this->add_csverror("No data was found in this record", implode(', ', $line));
+            return false;
+        }
+
         foreach ($csvrecord as $column => $value) {
 
             // Value "0" counts as value and returns valueisset true.
@@ -367,7 +375,7 @@ class fileparser {
                 }
             } else {
                 // Validation of field type.
-                switch($this->get_param_value($column, "type")) {
+                switch ($this->get_param_value($column, "type")) {
                     case "date":
                         if (!$this->validate_datefields($value)) {
                             $format = $this->settings->dateformat;
@@ -381,7 +389,7 @@ class fileparser {
                         break;
                 }
                 // Validation of field format.
-                switch($this->get_param_value($column, "format")) {
+                switch ($this->get_param_value($column, "format")) {
                     case PARAM_INT:
                         $value = $this->cast_string_to_int($value);
                         if (is_string($value)) {
@@ -403,7 +411,6 @@ class fileparser {
                         break;
                 }
             }
-
         };
         return true;
     }

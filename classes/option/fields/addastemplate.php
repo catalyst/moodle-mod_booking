@@ -84,14 +84,14 @@ class addastemplate extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         // When the addastemplate is not null, we set bookingid to 0.
         if (!empty($formdata->addastemplate)) {
@@ -106,15 +106,24 @@ class addastemplate extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         global $DB;
 
         // Templates - only visible when adding new.
         if (has_capability('mod/booking:manageoptiontemplates', $formdata['context'])
-            && $formdata['id'] < 1) {
+            && ($formdata['id'] < 1
+                || ($formdata['addastemplate'] ?? 0) > 0)) {
 
             $mform->addElement('header', 'templateheader',
                 '<i class="fa fa-fw fa-clone" aria-hidden="true"></i>&nbsp;' .

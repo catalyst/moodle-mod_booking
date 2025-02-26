@@ -38,7 +38,7 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * Condition to identify the user who triggered an event (userid of event).
  *
  * @package mod_booking
- * @copyright 2022 Wunderbyte GmbH <info@wunderbyte.at>
+ * @copyright 2024 Wunderbyte GmbH <info@wunderbyte.at>
  * @author Bernhard Fischer
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -46,6 +46,9 @@ class select_user_from_event implements booking_rule_condition {
 
     /** @var string $conditionname */
     public $conditionname = 'select_user_from_event';
+
+    /** @var string $conditionnamestringid Id of localized string for name of rule condition*/
+    protected $conditionnamestringid = 'selectuserfromevent';
 
     /** @var string $conditiontype */
     public $userfromeventtype = '0';
@@ -93,16 +96,18 @@ class select_user_from_event implements booking_rule_condition {
             $this->userfromeventtype = $ruleobj->conditiondata->userfromeventtype;
         }
 
-        $datafromevent = $ruleobj->datafromevent;
+        $event = $ruleobj->ruledata->boevent::restore((array)$ruleobj->datafromevent, []);
+
+        $datafromevent = $event->get_data();
 
         // The user who triggered the event.
-        if (!empty($datafromevent->userid)) {
-            $this->userid = $datafromevent->userid;
+        if (!empty($datafromevent['userid'])) {
+            $this->userid = $datafromevent['userid'];
         }
 
         // The user affected by the event.
-        if (!empty($datafromevent->relateduserid)) {
-            $this->relateduserid = $datafromevent->relateduserid;
+        if (!empty($datafromevent['relateduserid'])) {
+            $this->relateduserid = $datafromevent['relateduserid'];
         }
     }
 
@@ -110,22 +115,34 @@ class select_user_from_event implements booking_rule_condition {
      * Add condition to mform.
      *
      * @param MoodleQuickForm $mform
-     * @param array $ajaxformdata
+     * @param ?array $ajaxformdata
      * @return void
      */
-    public function add_condition_to_mform(MoodleQuickForm &$mform, array &$ajaxformdata = null) {
+    public function add_condition_to_mform(MoodleQuickForm &$mform, ?array &$ajaxformdata = null) {
 
         // The event selected in the form.
-        $eventnameonly = str_replace("\\mod_booking\\event\\", "", $ajaxformdata["rule_react_on_event_event"]);
+        $eventnameonly = '';
+        if (!empty($ajaxformdata["rule_react_on_event_event"])) {
+            $eventnameonly = str_replace("\\mod_booking\\event\\", "", $ajaxformdata["rule_react_on_event_event"]);
+        }
 
         // This is a list of events supporting relateduserid (affected user of the event).
         $eventssupportingrelateduserid = [
             'bookingoption_completed',
+            'custom_message_sent',
+            'bookinganswer_confirmed',
+            'bookinganswer_cancelled',
+            'bookingoptionwaitinglist_booked',
+            'bookingoption_booked',
+            'bookinganswer_waitingforconfirmation',
+            '\local_shopping_cart\event\item_bought',
+            '\local_shopping_cart\event\item_canceled',
+            '\local_shopping_cart\event\payment_confirmed',
             // More events yet to come...
         ];
 
         $mform->addElement('static', 'condition_select_user_from_event', '',
-                get_string('condition_select_user_from_event_desc', 'mod_booking'));
+                get_string('conditionselectuserfromevent_desc', 'mod_booking'));
 
         // We need to check if the event supports relateduserid (affected user of the event).
         $userfromeventoptions["0"] = get_string('choose...', 'mod_booking');
@@ -136,7 +153,7 @@ class select_user_from_event implements booking_rule_condition {
         $userfromeventoptions["userid"] = get_string('userwhotriggeredevent', 'mod_booking');
 
         $mform->addElement('select', 'condition_select_user_from_event_type',
-                get_string('condition_select_user_from_event_type', 'mod_booking'), $userfromeventoptions);
+                get_string('conditionselectuserfromeventtype', 'mod_booking'), $userfromeventoptions);
 
     }
 
@@ -147,7 +164,7 @@ class select_user_from_event implements booking_rule_condition {
      * @return string the name of the condition
      */
     public function get_name_of_condition($localized = true) {
-        return $localized ? get_string($this->conditionname, 'mod_booking') : $this->conditionname;
+        return $localized ? get_string($this->conditionnamestringid, 'mod_booking') : $this->conditionname;
     }
 
     /**
@@ -187,7 +204,7 @@ class select_user_from_event implements booking_rule_condition {
      *
      * @param stdClass $sql
      * @param array $params
-     * @return array
+     * @return void
      */
     public function execute(stdClass &$sql, array &$params) {
 

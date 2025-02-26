@@ -83,15 +83,16 @@ class pollurl extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
-
+        $returnvalue = null): array {
+        $instance = new pollurl();
+        $changes = [];
         $key = fields_info::get_class_name(static::class);
         $value = $formdata->{$key} ?? null;
 
@@ -100,9 +101,11 @@ class pollurl extends field_base {
         } else {
             $newoption->{$key} = '';
         }
-
+        $pollurlchanges = $instance->check_for_changes($formdata, $instance, null, $key, $value);
+        if (!empty($pollurlchanges)) {
+            $changes[$key] = $pollurlchanges;
+        };
         // We also need to take care of pollurlteachers.
-
         $key = 'pollurlteachers';
         $value = $formdata->{$key} ?? null;
 
@@ -112,8 +115,14 @@ class pollurl extends field_base {
             $newoption->{$key} = '';
         }
 
+        $puteacherschanges = $instance->check_for_changes($formdata, $instance, null, $key, $value);
+        if (!empty($puteacherschanges)) {
+            $puteacherschanges['changes']['fieldname'] = 'pollurlteachers';
+            $changes[$key] = $puteacherschanges;
+        };
+
         // We can return an warning message here.
-        return '';
+        return ['changes' => $changes];
     }
 
     /**
@@ -121,12 +130,22 @@ class pollurl extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         $mform->addElement('text', 'pollurl', get_string('bookingpollurl', 'mod_booking'), ['size' => '64']);
         $mform->setType('pollurl', PARAM_TEXT);

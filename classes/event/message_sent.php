@@ -24,6 +24,7 @@
  */
 
 namespace mod_booking\event;
+use mod_booking\singleton_service;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -39,7 +40,6 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class message_sent extends \core\event\base {
-
     /**
      * Init
      *
@@ -49,6 +49,7 @@ class message_sent extends \core\event\base {
     protected function init() {
         $this->data['crud'] = 'r';
         $this->data['edulevel'] = self::LEVEL_TEACHING;
+        $this->data['objecttable'] = 'booking_options';
     }
 
     /**
@@ -58,7 +59,7 @@ class message_sent extends \core\event\base {
      *
      */
     public static function get_name() {
-        return get_string('message_sent', 'booking');
+        return get_string('messagesent', 'booking');
     }
 
     /**
@@ -69,9 +70,48 @@ class message_sent extends \core\event\base {
      */
     public function get_description() {
 
-        return $this->transform_msgparam( $this->other['messageparam'] ) . ": " .
-            "An e-mail with subject '" . $this->other['subject'] . "' has been sent to user with id: '{$this->userid}'. " .
-            "The mail was sent from the user with id: '{$this->relateduserid}'.";
+        // For the collapsibles, we need a uniqueid.
+        $uniqueid = uniqid();
+
+        $data = $this->get_data();
+
+        if (is_string($data['other'])) {
+            $other = (object)json_decode($data['other']);
+            $messageparam = $other->messageparam ?? 0;
+            $userid = $data['userid'] ?? 'unknown';
+            $relateduserid = $data['relateduserid'] ?? 'unknown';
+        } else {
+            $other = (object)$data['other'];
+            $userid = $data['userid'];
+            $relateduserid = $data['relateduserid'];
+        }
+        $subject = $other->subject ?? '';
+        $message = $other->message ?? 'Message body not saved.';
+        $messageparam = $other->messageparam ?? '';
+
+        $messagetype = $this->transform_msgparam($messageparam);
+
+        $user = singleton_service::get_instance_of_user($userid);
+        $relateduser = singleton_service::get_instance_of_user($relateduserid);
+        $username = empty($user) ? $userid : $user->firstname . " " . $user->lastname;
+        $relatedusername = empty($relateduser) ? $userid : $relateduser->firstname . " " . $relateduser->lastname;
+
+        return '
+            <a class=""
+                data-toggle="collapse"
+                href="#a' . $uniqueid . '"
+                role="button" aria-expanded="false"
+                aria-controls="collapseExample">
+
+                ' . $messagetype . ' A message e-mail with subject "' . $subject .
+                '" has been sent to user: "' . $relatedusername .
+                '" by the user "' . $username  . '"
+            </a>
+            <div class="collapse" id="a' . $uniqueid . '">
+                <div class="card card-body">
+                    ' . $message . '
+                </div>
+            </div>';
     }
 
     /**

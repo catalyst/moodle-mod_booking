@@ -20,6 +20,7 @@ Feature: Test messaging features in a booking
       | admin    | C1     | manager        |
       | student1 | C1     | student        |
       | student2 | C1     | student        |
+    And I clean booking cache
     And the following "activities" exist:
       | activity | course | name       | intro                  | bookingmanager | eventtype | Default view for booking options | Activate e-mails (confirmations, notifications and more) | Booking option name  |
       | booking  | C1     | My booking | My booking description | teacher1       | Webinar   | All bookings                     | Yes                                                      | New option - Webinar |
@@ -54,7 +55,9 @@ Feature: Test messaging features in a booking
     And I run all adhoc tasks
     And I visit "/report/loglive/index.php"
     Then I should see "Booking option booked"
-    And I should see "Custom message: An e-mail with subject 'Behat test' has been sent to user with id:"
+    And I should see "Unknown message type A message e-mail with subject \"Behat test\" has been sent to user with id:"
+    And I should see "Custom message A message e-mail with subject \"Behat test\" has been sent to user: \"Teacher 1\" by the user \"Student 2\""
+    And I should see "Custom message A message e-mail with subject \"Behat test\" has been sent to user: \"Teacher 1\" by the user \"Student 1\""
     ## Logout is mandatory for admin pages to avoid error
     And I log out
 
@@ -71,7 +74,7 @@ Feature: Test messaging features in a booking
     And I click on "Book now" "text" in the ".allbookingoptionstable_r1" "css_element"
     And I should see "Click again to confirm booking" in the ".allbookingoptionstable_r1" "css_element"
     And I click on "Click again to confirm booking" "text" in the ".allbookingoptionstable_r1" "css_element"
-    And I should see "Booked" in the ".allbookingoptionstable_r1" "css_element"
+    And I should see "Start" in the ".allbookingoptionstable_r1" "css_element"
     ## Next step(s) cause faiure (coding error, email was not sent):
     ## Then I trigger cron
     ## And I wait "1" seconds
@@ -99,7 +102,9 @@ Feature: Test messaging features in a booking
     And I run all adhoc tasks
     And I visit "/report/loglive/index.php"
     Then I should see "Booking option booked"
-    And I should see "Reminder sent from report: An e-mail with subject 'Reminder: Your booked course' has been sent to user with id:"
-    And I should see "Booking confirmation: An e-mail with subject 'Booking confirmation for Option: mail to participant' has been sent to user with id:"
+    And I should see "Reminder sent from report A message e-mail with subject \"Reminder: Your booked course\" has been sent to user: \"Teacher 1\" by the user \"Student 2\""
+    And I should see "Reminder sent from report A message e-mail with subject \"Reminder: Your booked course\" has been sent to user: \"Teacher 1\" by the user \"Student 1\""
+    And I should see "Booking confirmation A message e-mail with subject \"Booking confirmation for Option: mail to participant\" has been sent to user: \"Teacher 1\" by the user \"Student 2\""
+    And I should see "Booking confirmation A message e-mail with subject \"Booking confirmation for Option: mail to participant\" has been sent to user: \"Teacher 1\" by the user \"Student 1\""
     ## Logout is mandatory for admin pages to avoid error
     And I log out

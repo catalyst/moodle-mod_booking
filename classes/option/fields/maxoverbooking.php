@@ -82,20 +82,25 @@ class maxoverbooking extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         if (!empty($formdata->maxoverbooking)) {
             $newoption->limitanswers = 1;
         }
 
-        return parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+        parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+
+        $instance = new maxoverbooking();
+        $changes = $instance->check_for_changes($formdata, $instance);
+
+        return $changes;
     }
 
     /**
@@ -103,13 +108,23 @@ class maxoverbooking extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         if (!get_config('booking', 'turnoffwaitinglist')) {
             // Standardfunctionality to add a header to the mform (only if its not yet there).
-            fields_info::add_header_to_mform($mform, self::$header);
+            if ($applyheader) {
+                fields_info::add_header_to_mform($mform, self::$header);
+            }
 
             $mform->addElement('text', 'maxoverbooking', get_string('maxoverbooking', 'mod_booking'));
             $mform->setType('maxoverbooking', PARAM_INT);

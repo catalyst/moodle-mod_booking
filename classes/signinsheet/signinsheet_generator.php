@@ -16,7 +16,10 @@
 
 namespace mod_booking\signinsheet;
 
+use mod_booking\booking_option_settings;
 use mod_booking\singleton_service;
+use Throwable;
+use user_picture;
 
 /**
  * Class for generating the signin sheet as PDF using TCPDF
@@ -29,7 +32,6 @@ use mod_booking\singleton_service;
  *
  */
 class signinsheet_generator {
-
     /**
      * @var int $optionid
      */
@@ -219,12 +221,21 @@ class signinsheet_generator {
     public $hasrotatedfields = false;
 
     /**
+     * Customuserfields.
+     * @var array
+     */
+    public $customuserfields = [];
+
+    /**
      * Define basic variable values for signinsheet pdf
      *
-     * @param \mod_booking\booking_option $bookingoption
      * @param \stdClass $pdfoptions
+     * @param ?\mod_booking\booking_option $bookingoption
+     *
      */
-    public function __construct(\mod_booking\booking_option $bookingoption = null, \stdClass $pdfoptions) {
+    public function __construct(\stdClass $pdfoptions, ?\mod_booking\booking_option $bookingoption = null) {
+
+        global $DB;
 
         $this->optionid = $bookingoption->optionid;
         $this->bookingoption = $bookingoption;
@@ -276,6 +287,8 @@ class signinsheet_generator {
             $this->extracols[$i] = trim(get_config('booking', 'signinextracols' . $i));
         }
 
+        $this->customuserfields = $DB->get_records('user_info_field', []);
+
         $this->pdf = new signin_pdf($this->orientation, PDF_UNIT, PDF_PAGE_FORMAT);
     }
 
@@ -283,7 +296,7 @@ class signinsheet_generator {
      * Generate PDF and prepare it for download
      */
     public function download_signinsheet() {
-        global $DB;
+        global $DB, $PAGE;
         $groupparams = [];
         $addsqlwhere = '';
 
@@ -296,7 +309,23 @@ class signinsheet_generator {
                     $this->bookingoption->booking->course->id);
             $addsqlwhere .= " AND u.id IN ($groupsql)";
         }
-        $remove = ['signinextracols1', 'signinextracols2', 'signinextracols3', 'fullname', 'signature', 'rownumber', 'role'];
+
+        $userinfofields = $DB->get_records('user_info_field', []);
+        $remove = [
+            'signinextracols1',
+            'signinextracols2',
+            'signinextracols3',
+            'fullname',
+            'signature',
+            'rownumber',
+            'role',
+            'userpic',
+            'places',
+        ];
+
+        foreach ($userinfofields as $field) {
+            $remove[] = $field->shortname;
+        }
 
         $mainuserfields = \core_user\fields::for_name()->get_sql('u')->selects;
         $mainuserfields = trim($mainuserfields, ', ');
@@ -308,13 +337,19 @@ class signinsheet_generator {
             $userfields = '';
         }
 
+        list($select1, $from1, $filter1, $params1) = booking_option_settings::return_sql_for_custom_profile_field($userinfofields);
+
+        $sql =
+        "SELECT u.id, ba.timecreated as bookingtime, ba.places, " . $mainuserfields . $userfields . $select1 .
+        " FROM {booking_answers} ba
+        LEFT JOIN {user} u ON u.id = ba.userid
+        $from1
+        WHERE ba.optionid = :optionid AND ba.waitinglist = 0 " .
+                 $addsqlwhere . "ORDER BY u.{$this->orderby} ASC";
+
         $users = $DB->get_records_sql(
-                "SELECT u.id, " . $mainuserfields . $userfields .
-            " FROM {booking_answers} ba
-            LEFT JOIN {user} u ON u.id = ba.userid
-            WHERE ba.optionid = :optionid AND ba.waitinglist = 0 " .
-                         $addsqlwhere . "ORDER BY u.{$this->orderby} ASC",
-                        array_merge($groupparams,
+                $sql,
+                array_merge($groupparams,
                                 ['optionid' => $this->optionid]));
 
         // Create fake users for adding empty rows.
@@ -377,36 +412,10 @@ class signinsheet_generator {
 
         $this->set_page_header();
 
-        $profilefields = explode(',', get_config('booking', 'custprofilefields'));
-        $profiles = profile_get_custom_fields();
-        $profilefieldnames = [];
-        if (!empty($profiles)) {
-            $profilefieldnames = array_map(
-                    function ($object) {
-                        return $object->shortname;
-                    }, $profiles);
-        }
-        foreach ($profilefieldnames as $key => $value) {
-            if (!in_array($key, $profilefields)) {
-                unset($profilefieldnames[$key]);
-            }
-        }
         foreach ($users as $user) {
             if (!isset($user->isteacher)) {
                 $user->isteacher = false;
             }
-            $profiletext = '';
-            profile_load_custom_fields($user);
-            $userprofile = $user->profile;
-            if (!empty($user->profile) && $user->id > 0) {
-                $profiletext .= " ";
-                foreach ($user->profile as $profilename => $value) {
-                    if (in_array($profilename, $profilefieldnames)) {
-                        $profiletext .= $value . " ";
-                    }
-                }
-            }
-
             // The first time a teacher is processed a new page should be made.
             if ($this->processteachers != $user->isteacher) {
                 $this->processteachers = true;
@@ -425,12 +434,18 @@ class signinsheet_generator {
             if ($this->showrownumbers) {
                 $this->rownumber++;
             }
-
+            if (in_array('userpic', $this->allfields)) {
+                // If there is an image to be displayed, create higher rows.
+                $h = 20;
+            } else {
+                // Initialize height with 0.
+                $h = 0;
+            }
             foreach ($this->allfields as $value) {
                 $c++;
                 $w = ($this->colwidth - PDF_MARGIN_LEFT - PDF_MARGIN_RIGHT) / (count($this->allfields));
-                $h = 0; // Initialize height with 0.
                 $rotate = false;
+                $escape = false;
                 switch ($value) {
                     case 'rownumber':
                         $name = "{$this->rownumber}";
@@ -480,6 +495,10 @@ class signinsheet_generator {
                     case 'address':
                         $name = $user->address;
                         break;
+                    case 'places':
+                        $w = 15;
+                        $name = $user->places;
+                        break;
                     case 'role':
                             // Check if the user is a fake user.
                         if ($user->id > 0) {
@@ -493,6 +512,53 @@ class signinsheet_generator {
                             $name = '';
                         }
                         break;
+                    case 'userpic':
+                        $name = "";
+                        $userobj = singleton_service::get_instance_of_user($user->id);
+                        if (empty($user->id) || empty($userobj)) {
+                            // In case row is empty. No user given.
+                            // Make sure column with is respected.
+                            $w = 20;
+                            break;
+                        }
+                        $userpic = new user_picture($userobj);
+                        if (empty($userpic)) {
+                            break;
+                        }
+                        $userpic->size = 200;
+                        $userpictureurl = $userpic->get_url($PAGE);
+                        $out = $userpictureurl->out();
+                        if (@getimagesize($out)) {
+                            $this->pdf->Image(
+                                $out,
+                                '',
+                                '',
+                                0,
+                                $h,
+                                '',
+                                '',
+                                'T',
+                                true,
+                                400,
+                                '',
+                                false,
+                                false,
+                                1,
+                                false,
+                                false,
+                                false
+                            );
+                        }
+
+                        $escape = true;
+                        break;
+                    case 'timecreated':
+                        $w = 30;
+                        $name = "";
+                        if (isset($user->bookingtime) && $user->bookingtime > 0) {
+                            $name = userdate($user->bookingtime, get_string('strftimedatetime', 'langconfig'));
+                        }
+                        break;
                     case 'signinextracols1':
                     case 'signinextracols2':
                     case 'signinextracols3':
@@ -502,15 +568,28 @@ class signinsheet_generator {
                         $w = 5;
                         $rotate = true;
                         $name = '';
+
+                        foreach ($this->customuserfields as $customuserfield) {
+                            if ($value == $customuserfield->shortname) {
+                                $name = $user->{$value} ?? $user->{strtolower($value)};
+                                $name = format_string($name);
+                                $w = 25;
+                                $rotate = false;
+                                break;
+                            }
+                        }
+                }
+                if ($escape) {
+                    continue;
                 }
                 if ($rotate) {
-                    $this->pdf->Cell(6, 0, $name, 1, (count($this->allfields) == $c ? 1 : 0),
+                    $this->pdf->Cell(6, $h, $name, 1, (count($this->allfields) == $c ? 1 : 0),
                         '', 0, "", 1);
                 } else {
                     if ($c == 1) {
                         $this->pdf->SetY($this->pdf->GetY() - 5, false);
                     }
-                    $this->pdf->Cell($w, 0, $name, 1, (count($this->allfields) == $c ? 1 : 0), '', 0, '', 1);
+                    $this->pdf->Cell($w, $h, $name, 1, (count($this->allfields) == $c ? 1 : 0), '', 0, '', 1);
                 }
             }
             $this->pdf->SetY($this->pdf->GetY() + 5);
@@ -679,15 +758,14 @@ class signinsheet_generator {
         $settings = singleton_service::get_instance_of_booking_option_settings($this->optionid);
 
         // Get header and footer logo for signin sheet.
-        // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
-        /* $this->pdf->SetXY(18, $this->pdf->getY() - 15); */
+        $this->pdf->SetXY(18, $this->pdf->getY() - 15);
 
-        // TODO: Fix signinsheet logo!
-        // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
-        /* if ($this->get_signinsheet_logo()) {
+        if ($this->get_signinsheet_logo()) {
             $this->pdf->Image('@' . $this->signinsheetlogo->get_content(), '', '', $this->w, $this->h, '', '', 'T',
                     true, 150, 'R', false, false, 0, false, false, false);
-        } */
+        }
+        // Empty multicell for spacing.
+        $this->pdf->MultiCell(55, 5, '', 0, '', 0, 1, '', '', true);
 
         $this->pdf->SetFont('freesans', '', 10);
 
@@ -724,7 +802,7 @@ class signinsheet_generator {
                     '', 0, '', 1);
         }
 
-        if (!empty(trim($settings->address))) {
+        if (!empty(trim($settings->address ?? ''))) {
             $this->pdf->Cell(0, 0,
                     get_string('signinsheetaddress', 'booking') . format_string($settings->address), 0, 1,
                     '', 0, '', 1);
@@ -737,7 +815,7 @@ class signinsheet_generator {
         }
 
         $this->pdf->MultiCell($this->cellwidthteachers, 0,
-                get_string('teacher_s', 'mod_booking') . ": " . implode(', ', $this->teachers), 0, 1, '',
+                get_string('teachers', 'mod_booking') . ": " . implode(', ', $this->teachers), 0, 1, '',
                 0);
         $this->pdf->Ln();
 
@@ -809,6 +887,7 @@ class signinsheet_generator {
      * Setup the header row with the column headings for each column
      */
     private function set_table_headerrow() {
+        global $DB;
 
         $this->pdf->SetFont('freesans', 'B', 10);
         $c = 0;
@@ -875,10 +954,34 @@ class signinsheet_generator {
                 case 'role':
                     $name = new \lang_string('role');
                     break;
+                case 'userpic':
+                    $w = 20;
+                    $name = get_string('userpic');
+                    break;
+                case 'places':
+                    $w = 15;
+                    $name = get_string('places', 'mod_booking');
+                    break;
+                case 'timecreated':
+                    $w = 30;
+                    $name = get_string('bookingdate', 'mod_booking');
+                    break;
                 default:
-                    $rotate = true;
-                    $this->hasrotatedfields = true;
-                    $name = $value;
+                    $userfield = false;
+                    foreach ($this->customuserfields as $customuserfield) {
+                        if ($value == $customuserfield->shortname) {
+                            $name = format_string($customuserfield->name);
+                            $w = 25;
+                            $userfield = true;
+                            break;
+                        }
+                    }
+                    if (!$userfield) {
+                        $rotate = true;
+                        $this->hasrotatedfields = true;
+                        $name = $value;
+                    }
+
             }
 
             if ($rotate) {

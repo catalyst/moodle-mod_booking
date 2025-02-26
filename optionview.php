@@ -13,11 +13,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
 /**
  * Add dates to option.
  *
  * @package mod_booking
- * @copyright 2016 Andraž Prinčič www.princic.net
+ * @copyright 2023 Wunderbyte GmbH <info@wunderbyte.at>
+ * @author Andraž Prinčič
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -36,31 +38,62 @@ $cmid = required_param('cmid', PARAM_INT); // Course Module ID.
 $optionid = required_param('optionid', PARAM_INT);
 $userid = optional_param('userid', 0, PARAM_INT);
 
-$syscontext = context_system::instance();
-$modcontext = context_module::instance($cmid);
+$returnto = optional_param('returnto', '', PARAM_ALPHA);
+$returnurl = optional_param('returnurl', '', PARAM_URL);
 
-require_capability('mod/booking:view', $modcontext);
+$modcontext = context_module::instance($cmid);
+$syscontext = context_system::instance();
+
+// If we have this setting.
+if (!get_config('booking', 'showbookingdetailstoall')) {
+    require_login();
+}
+
+// If we have this setting.
+if (!get_config('booking', 'bookonlyondetailspage')) {
+    require_capability('mod/booking:view', $modcontext);
+}
 
 $PAGE->set_context($syscontext);
 
 $url = new moodle_url('/mod/booking/optionview.php', ['cmid' => $cmid, 'optionid' => $optionid]);
 $PAGE->set_url($url);
 
+// If the user is logged-in, we check if (s)he has accepted the site policy.
+if (isloggedin() && !isguestuser()) {
+    $currentpolicyversionids = \tool_policy\api::get_current_versions_ids();
+    if (!empty($currentpolicyversionids)) {
+        foreach ($currentpolicyversionids as $currentpolicyversionid) {
+            if (\tool_policy\api::get_agreement_optional($currentpolicyversionid)) {
+                continue;
+            }
+            $acceptance = \tool_policy\api::get_user_version_acceptance($USER->id, $currentpolicyversionid);
+            if (empty($acceptance)) {
+                // If the user did not yet accept, we redirect to the policy page.
+                $policyurl = new moodle_url('/admin/tool/policy/index.php', ['returnurl' => $url]);
+                redirect($policyurl);
+            }
+        }
+    }
+}
+
 $booking = singleton_service::get_instance_of_booking_by_cmid($cmid);
 
 // Make sure, we respect module visibility and activity restrictions on the booking instance.
 $modinfo = get_fast_modinfo($booking->course);
 $cm = $modinfo->get_cm($cmid);
-if (!$cm->uservisible) {
+if (!$cm->uservisible && !get_config('booking', 'bookonlyondetailspage')) {
     echo $OUTPUT->header();
-    echo html_writer::div(get_string('invisibleoption:notallowed', 'mod_booking'),
-        "alert alert-danger");
+    echo html_writer::div(
+        get_string('invisibleoption:notallowed', 'mod_booking'),
+        "alert alert-danger"
+    );
     echo $OUTPUT->footer();
     die();
 }
 
-if ($settings = singleton_service::get_instance_of_booking_option_settings($optionid)) {
-
+$settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+if ($settings && !empty($settings->id)) {
     if ($userid == $USER->id || $userid == 0) {
         $user = $USER;
     } else {
@@ -70,28 +103,31 @@ if ($settings = singleton_service::get_instance_of_booking_option_settings($opti
 
     $bookinganswer = singleton_service::get_instance_of_booking_answers($settings);
 
-    $PAGE->navbar->add($settings->text);
-    $PAGE->set_title(format_string($settings->text));
-    $PAGE->set_pagelayout('standard');
+    $PAGE->set_title(format_string($settings->get_title_with_prefix()));
+    $PAGE->set_pagelayout('base');
 
     echo $OUTPUT->header();
-
-    // TODO: The following lines change the context of the PAGE object and have therefore to be called after printing the header.
+    // phpcs:ignore moodle.Commenting.TodoComment.MissingInfoInline
+    // TODO: The following lines change the context of the PAGE object...
+    // ... and have therefore to be called after printing the header.
     // This needs to be fixed.
 
     $output = $PAGE->get_renderer('mod_booking');
-    $data = new bookingoption_description($settings->id, null, MOD_BOOKING_DESCRIPTION_OPTIONVIEW, true, null, $user);
+    $data = new bookingoption_description($settings->id, null, MOD_BOOKING_DESCRIPTION_OPTIONVIEW, true, null, $user, true);
+    $data->returnurl = $returnurl ?? false;
+
+    // The isinvisible check ONLY checks the "real" invisible option, not the "visible only with direct link".
+    // As the option here is only possible with direct link, we don't need to check this.
 
     if ($data->is_invisible()) {
         // If the user does have the capability to see invisible options...
-        if (has_capability('mod/booking:canseeinvisibleoptions', $syscontext)) {
+        if (has_capability('mod/booking:canseeinvisibleoptions', $modcontext)) {
             // ... then show it.
             echo $output->render_bookingoption_description_view($data);
         } else {
             // User is not entitled to see invisible options.
             echo get_string('invisibleoption:notallowed', 'mod_booking');
         }
-
     } else {
         echo $output->render_bookingoption_description_view($data);
     }

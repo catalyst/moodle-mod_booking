@@ -82,16 +82,19 @@ class minanswers extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
-        return parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+        parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+        $instance = new minanswers();
+        $changes = $instance->check_for_changes($formdata, $instance);
+        return $changes;
     }
 
     /**
@@ -99,12 +102,22 @@ class minanswers extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         $mform->addElement('text', 'minanswers', get_string('minanswers', 'mod_booking'));
         $mform->setType('minanswers', PARAM_INT);

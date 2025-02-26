@@ -178,6 +178,7 @@ class actions_info {
      * @param stdClass $data
      */
     public static function delete_action(stdClass $data) {
+        global $USER;
 
         // Todo: Actually delete information from option.
 
@@ -192,10 +193,13 @@ class actions_info {
             unset($optionvalues->jsonobject->boactions[$data->id]);
 
             $optionvalues->json = json_encode($optionvalues->jsonobject);
+            $optionvalues->boactions = $optionvalues->jsonobject->boactions;
 
             $context = context_module::instance($data->cmid);
 
             booking_option::update($optionvalues, $context, MOD_BOOKING_UPDATE_OPTIONS_PARAM_REDUCED);
+
+            booking_option::trigger_updated_event($context, $optionvalues->optionid, $USER->id, $USER->id, 'actions');
         }
 
     }
@@ -216,8 +220,6 @@ class actions_info {
         $cmid = $formdata['cmid'] ?? 0;
 
         // TODO: Get existing actions not from table but from json of this option.
-
-        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
 
         $boactions = booking_option::get_value_of_json_by_key($optionid, 'boactions');
 
@@ -290,6 +292,10 @@ class actions_info {
         $returnstatus = 0;
         foreach ($settings->boactions as $actiondata) {
 
+            // Use ID & cmid from current bookingoption.
+            $actiondata->cmid = $settings->cmid;
+            $actiondata->optionid = $settings->id;
+
             $action = self::return_action($actiondata);
 
             $status = $action->apply_action($actiondata, $userid);
@@ -300,7 +306,6 @@ class actions_info {
         }
 
         return $status;
-
     }
 
     /**

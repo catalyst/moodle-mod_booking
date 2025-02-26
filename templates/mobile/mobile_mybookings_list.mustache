@@ -1,0 +1,110 @@
+{{=<% %>=}}
+
+<%#arguments%>
+            <% key %>
+            <br>
+            <% value %>
+<%/arguments%>
+
+<style>
+  .mod-booking-mobile-navbar {
+      display: flex;
+      overflow-x: auto;
+      white-space: nowrap;
+      background-color: #f8f9fa;
+      padding: 10px 5px;
+      border-bottom: 1px solid #ddd;
+  }
+  .mod-booking-mobile-navbar ion-button {
+      flex-shrink: 0;
+      font-size: 14px;
+      margin: 0 5px;
+      --background: orange;
+      --color: white;
+      border-radius: 1rem;
+  }
+  .mod-booking-mobile-navbar ion-button.active {
+      --background: darkorange;
+      --color: white;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      font-weight: bold;
+      transform: scale(1.05);
+  }
+</style>
+
+
+<div class="mod-booking-mobile-navbar">
+  <%#availablenavtabs%>
+    <ion-button
+        core-site-plugins-new-content
+        title="<% text %>"
+        component="mod_booking"
+        method="mobile_course_view"
+        [args]="{cmid: <% cmid %>, whichview: '<% label %>', timestamp: <% timestamp %>}"
+        class="<% class %>"
+    >
+        <% isactive %>
+        <% name %>
+    </ion-button>
+  <%/availablenavtabs%>
+</div>
+
+<%#mybookings%>
+    <ion-card>
+        <ion-card-header>
+            <h3>
+                <% title %>
+            </h3>
+        </ion-card-header>
+        <ion-card-content>
+            <br>
+            <%# sessions %>
+                <div><% concatinatedstartendtime %></div>
+            <%/ sessions %>
+
+            <%# collapsedsessions.0 %>
+            <ion-accordion-group
+              style="padding-bottom: 3px !important;"
+            >
+              <ion-accordion value="first">
+                <ion-item slot="header" color="light">
+                  <ion-label>
+                    {{ 'plugin.mod_booking.showdates' | translate }}
+                    <ion-icon name="calendar-outline" />
+                  </ion-label>
+                </ion-item>
+                <%# collapsedsessions %>
+                  <div
+                    class="ion-padding"
+                    style="padding-bottom: 9px !important; padding-top: 3px !important;"
+                    slot="content"
+                  >
+                    <% coursestarttime %> - <% courseendtime %>
+                  </div>
+                <%/ collapsedsessions %>
+              </ion-accordion>
+            </ion-accordion-group>
+            <%/ collapsedsessions.0 %>
+
+            <%# sessions.0 %>
+            <br>
+            <%/ sessions.0 %>
+
+            <%# price %>
+            <ion-text>
+                <b>
+                  {{ 'plugin.mod_booking.mobileappprice' | translate }}
+                </b>
+                <h4><% price %> <% currency %></h4>
+                <br>
+            </ion-text>
+            <%/ price %>
+
+            <ion-button core-site-plugins-new-content
+                title="<% text %>" component="mod_booking"
+                method="mobile_booking_option_details" [args]="{optionid: <% itemid %>, userid: <% userid %>}">
+                {{ 'plugin.mod_booking.details' | translate }}
+            </ion-button>
+        </ion-card-content>
+    </ion-card>
+<%/mybookings%>

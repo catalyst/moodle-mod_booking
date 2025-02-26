@@ -85,18 +85,18 @@ class json extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         $newoption->json = $formdata->json ?? '{}';
 
-        return '';
+        return [];
     }
 
     /**
@@ -104,9 +104,17 @@ class json extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         $settings = singleton_service::get_instance_of_booking_option_settings($formdata['optionid'] ?? $formdata['id']);
         $mform->addElement('hidden', 'json', $settings->json ?? '{}');
@@ -123,7 +131,10 @@ class json extends field_base {
     public static function set_data(stdClass &$data, booking_option_settings $settings) {
 
         global $DB;
-
-        $data->json = $settings->json ?? '{}';
+        if (!empty($data->importing)) {
+            $data->json = $data->json ?? $settings->json ?? '{}';
+        } else {
+            $data->json = $settings->json ?? '{}';
+        }
     }
 }

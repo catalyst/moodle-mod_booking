@@ -192,6 +192,7 @@ class optiondate {
                 $newdata = $data;
                 $newdata['optiondateid'] = $id;
                 $oldrecord->optiondateid = $id;
+                $newdata['eventid'] = !empty($data['eventid']) ? $data['eventid'] : $oldrecord->eventid;
 
                 // Now we compare the old record and the new record.
                 if (!self::compare_optiondates((array)$oldrecord, $newdata, 1)) {
@@ -216,7 +217,7 @@ class optiondate {
 
             // When we create a template, we may not have a cmid.
 
-            if (!empty($settings->cmid)) {
+            if (!empty($settings->cmid) && !empty($optionid)) {
 
                 // We trigger the event, where we take care of events in calendar etc. First we get the context.
                 $event = bookingoptiondate_created::create([
@@ -235,10 +236,13 @@ class optiondate {
                 }
             }
 
-            // If a new optiondate is inserted and we have no entityid set, then we use the entity of the parent option as default.
-            if (class_exists('local_entities\entitiesrelation_handler') && empty($entityid)) {
-                $erhandleroption = new entitiesrelation_handler('mod_booking', 'option');
-                $entityid = $erhandleroption->get_entityid_by_instanceid($optionid);
+            if (class_exists('local_entities\entitiesrelation_handler')) {
+                if (empty($entityid)) {
+                    // If a new optiondate is inserted and we have no entityid set...
+                    // ...then we use the entity of the parent option as default.
+                    $erhandleroption = new entitiesrelation_handler('mod_booking', 'option');
+                    $entityid = $erhandleroption->get_entityid_by_instanceid($optionid);
+                }
                 $erhandler = new entitiesrelation_handler('mod_booking', 'optiondate');
                 $erhandler->save_entity_relation($id, $entityid);
             }
@@ -282,10 +286,11 @@ class optiondate {
     public static function compare_optiondates(array $oldoptiondate, array $newoptiondate, int $mode = 0): bool {
 
         if ($mode <= 1) {
-            if (($oldoptiondate['optiondateid'] != $newoptiondate['optiondateid'])
+            if (
+                ($oldoptiondate['optiondateid'] != $newoptiondate['optiondateid'])
                 || ($oldoptiondate['coursestarttime'] != $newoptiondate['coursestarttime'])
                 || $oldoptiondate['courseendtime'] != $newoptiondate['courseendtime']
-                || $oldoptiondate['daystonotify'] != $newoptiondate['daystonotify']) {
+            ) {
                 // If one of the dates is not exactly the same, we need to delete the current option and add a new one.
                 return false;
             }

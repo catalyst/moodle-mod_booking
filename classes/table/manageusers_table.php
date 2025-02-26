@@ -18,47 +18,58 @@
  * Search results for managers are shown in a table (student search results use the template searchresults_student).
  *
  * @package mod_booking
- * @copyright 2023 Wunderbyte GmbH
+ * @copyright 2024 Wunderbyte GmbH
+ * @author Georg Maißer, Bernhard Fischer
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 namespace mod_booking\table;
+use mod_booking\enrollink;
+use mod_booking\event\bookinganswer_confirmed;
 
 defined('MOODLE_INTERNAL') || die();
-
-global $CFG;
 
 use cache;
 use cache_helper;
 use coding_exception;
 use context_system;
 use context_module;
-use dml_exception;
-use html_writer;
 use local_wunderbyte_table\output\table;
 use local_wunderbyte_table\wunderbyte_table;
-use moodle_exception;
 use moodle_url;
 use stdClass;
-use mod_booking\booking;
-use mod_booking\booking_bookit;
 use mod_booking\booking_option;
-use mod_booking\option\dates_handler;
-use mod_booking\output\col_availableplaces;
 use mod_booking\output\col_teacher;
-use mod_booking\price;
 use mod_booking\singleton_service;
+use mod_booking\output\renderer;
 
-defined('MOODLE_INTERNAL') || die();
+global $CFG;
+
+require_once($CFG->dirroot . '/mod/booking/lib.php');
 
 /**
- * Class to handle search results for managers are shown in a table.
+ * Table to manage users (used in report.php).
  *
  * @package mod_booking
- * @copyright 2023 Wunderbyte GmbH
+ * @author Georg Maißer, Bernhard Fischer
+ * @copyright 2024 Wunderbyte GmbH
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class manageusers_table extends wunderbyte_table {
+    /**
+     * Checkbox column.
+     * @param stdClass $values
+     * @return string
+     */
+    public function col_checkbox(stdClass $values) {
+        if (!$this->is_downloading()) {
+            return '<input id="manageuserstable-check-' . $values->id .
+                     '" type="checkbox" class="usercheckbox" name="user[][' . $values->userid .
+                     ']" value="' . $values->userid . '" />';
+        } else {
+            return '';
+        }
+    }
 
     /**
      * Return dragable column.
@@ -71,6 +82,78 @@ class manageusers_table extends wunderbyte_table {
         global $OUTPUT;
 
         return $OUTPUT->render_from_template('local_wunderbyte/col_sortableitem', []);
+    }
+
+    /**
+     * Return column timemodified.
+     *
+     * @param stdClass $values
+     * @return string
+     */
+    public function col_timemodified(stdClass $values) {
+
+        return userdate($values->timemodified);
+    }
+
+    /**
+     * Return option column.
+     *
+     * @param stdClass $values
+     * @return string
+     */
+    public function col_option(stdClass $values) {
+
+        if (empty($values->optionid)) {
+            return '';
+        }
+        $settings = singleton_service::get_instance_of_booking_option_settings($values->optionid);
+
+        if ($this->is_downloading()) {
+            return $settings->get_title_with_prefix();
+        }
+
+        global $OUTPUT;
+
+        // Render col_teacher using a template.
+        $data = new col_teacher($values->optionid, $settings);
+        /** @var renderer $output */
+        $output = singleton_service::get_renderer('mod_booking');
+        $teachers = $output->render_col_teacher($data);
+
+        $optionlink = new moodle_url(
+            '/mod/booking/view.php',
+            [
+                'id' => $values->cmid,
+                'optionid' => $values->optionid,
+                'whichview' => 'showonlyone',
+            ]
+        );
+
+        $report2link = new moodle_url(
+            '/mod/booking/report2.php',
+            [
+                'cmid' => $values->cmid,
+                'optionid' => $values->optionid,
+            ]
+        );
+
+        $instancelink = new moodle_url(
+            '/mod/booking/report2.php',
+            ['cmid' => $values->cmid]
+        );
+
+        $data = [
+            'id' => $values->optionid,
+            'titleprefix' => $values->titleprefix,
+            'title' => $values->text,
+            'optionlink' => $optionlink->out(false),
+            'report2link' => $report2link->out(false),
+            'instancename' => $values->instancename,
+            'instancelink' => $instancelink->out(false),
+            'teachers' => $teachers,
+        ];
+
+        return $OUTPUT->render_from_template('mod_booking/report/option', $data);
     }
 
     /**
@@ -98,6 +181,71 @@ class manageusers_table extends wunderbyte_table {
     }
 
     /**
+     * Return presence column.
+     *
+     * @param stdClass $values
+     * @return string
+     */
+    public function col_status(stdClass $values) {
+        if (isset(MOD_BOOKING_ALL_POSSIBLE_PRESENCES_ARRAY[$values->status])) {
+            return MOD_BOOKING_ALL_POSSIBLE_PRESENCES_ARRAY[$values->status];
+        } else {
+            return '';
+        }
+    }
+
+    /**
+     * Return presence counter.
+     *
+     * @param stdClass $values
+     * @return string
+     */
+    public function col_presencecount(stdClass $values) {
+        if ($this->is_downloading()) {
+            return $values->presencecount ?? 0;
+        }
+        if (empty($values->optionid)) {
+            return '';
+        }
+        $settings = singleton_service::get_instance_of_booking_option_settings($values->optionid);
+        $numberofoptiondates = count($settings->sessions);
+        if ($values->scope == 'option') {
+            return "<b>" . ($values->presencecount ?? '0') . "</b>" . "/" . $numberofoptiondates;
+        } else {
+            $answers = singleton_service::get_instance_of_booking_answers($settings);
+            $numberofbookedusers = count($answers->usersonlist);
+            $numberofpossiblepresences = $numberofbookedusers * $numberofoptiondates;
+            return "<b>" . ($values->presencecount ?? 0) . "</b>/" . $numberofpossiblepresences;
+        }
+    }
+
+    /**
+     * Return count of booking answers.
+     *
+     * @param stdClass $values
+     * @return string
+     */
+    public function col_answerscount(stdClass $values) {
+        if ($this->is_downloading()) {
+            return $values->answerscount ?? 0;
+        }
+        if (empty($values->optionid)) {
+            return '';
+        }
+        $settings = singleton_service::get_instance_of_booking_option_settings($values->optionid);
+        $maxanswers = $settings->maxanswers ?? get_string('unlimitedplaces', 'mod_booking');
+        $maxoverbooking = $settings->maxoverbooking ?? 0;
+
+        if ($values->waitinglist == 0) {
+            return "<b>" . ($values->answerscount ?? 0) . "</b>/" . $maxanswers;
+        } else if ($values->waitinglist == 1) {
+            return "<b>" . ($values->answerscount ?? 0) . "</b>/" . $maxoverbooking;
+        }
+
+        return $values->answerscount ?? '';
+    }
+
+    /**
      * Change number of rows. Uses the transmitaction pattern (actionbutton).
      * @param int $id
      * @param string $data
@@ -120,7 +268,6 @@ class manageusers_table extends wunderbyte_table {
         $newtimemodified = 0;
 
         foreach ($ids as $id) {
-
             // The first item is our reference.
             if (empty($newtimemodified)) {
                 $newtimemodified = $this->rawdata[$id]->timemodified;
@@ -152,7 +299,7 @@ class manageusers_table extends wunderbyte_table {
      */
     public function action_confirmbooking(int $id, string $data): array {
 
-        global $DB;
+        global $DB, $USER;
 
         $jsonobject = json_decode($data);
         $baid = $jsonobject->id;
@@ -167,24 +314,51 @@ class manageusers_table extends wunderbyte_table {
         $context = context_module::instance($settings->cmid);
 
         if (has_capability('mod/booking:bookforothers', $context)) {
-
             $option = singleton_service::get_instance_of_booking_option($settings->cmid, $optionid);
             $user = singleton_service::get_instance_of_user($userid);
 
             // If booking option is booked with a price, we don't book directly but just allow to book.
-            if (!empty($settings->jsonobject->useprice)) {
-                $option->user_submit_response($user, 0, 0, 2, MOD_BOOKING_VERIFIED);
-
+            // Exeption: The booking is autoenrol and needs to be booked directly...
+            // In this case price can be given for bookingoption, but was already payed before.
+            if (
+                !empty($settings->jsonobject->useprice)
+                && empty(get_config('booking', 'turnoffwaitinglist'))
+                && (
+                    $erwaitinglist = enrollink::enrolmentstatus_waitinglist($settings) === false
+                    || enrollink::is_initial_answer($record) === true
+                ) // Only the initial answer of enrollink needs to be bought.
+            ) {
+                $option->user_submit_response(
+                    $user,
+                    0,
+                    0,
+                    MOD_BOOKING_BO_SUBMIT_STATUS_CONFIRMATION,
+                    MOD_BOOKING_VERIFIED
+                );
             } else {
-
-                $option->user_submit_response($user, 0, 0, 0, MOD_BOOKING_VERIFIED);
+                // Check if it's an autoenrollment. If so, we need to change the status.
+                if (!empty($erwaitinglist)) {
+                    $status = MOD_BOOKING_BO_SUBMIT_STATUS_AUTOENROL;
+                } else {
+                    $status = MOD_BOOKING_BO_SUBMIT_STATUS_DEFAULT;
+                }
+                $option->user_submit_response($user, 0, 0, $status, MOD_BOOKING_VERIFIED);
             }
+            // Event is triggered no matter if a bookinganswer with or without price was confirmed.
+            $event = bookinganswer_confirmed::create(
+                [
+                    'objectid' => $option->id,
+                    'context' => \context_system::instance(),
+                    'userid' => $USER->id,
+                    'relateduserid' => $user->id,
+                ]
+            );
+            $event->trigger();
             return [
                 'success' => 1,
                 'message' => get_string('successfullybooked', 'mod_booking'),
                 'reload' => 1,
             ];
-
         } else {
             return [
                 'success' => 0,
@@ -216,7 +390,6 @@ class manageusers_table extends wunderbyte_table {
         $context = context_module::instance($settings->cmid);
 
         if (has_capability('mod/booking:bookforothers', $context)) {
-
             $option = singleton_service::get_instance_of_booking_option($settings->cmid, $optionid);
             $user = singleton_service::get_instance_of_user($userid);
 
@@ -227,7 +400,6 @@ class manageusers_table extends wunderbyte_table {
                 'message' => get_string('successfullybooked', 'mod_booking'),
                 'reload' => 1,
             ];
-
         } else {
             return [
                 'success' => 0,
@@ -244,6 +416,8 @@ class manageusers_table extends wunderbyte_table {
      */
     public function action_deletebooking(int $id, string $data): array {
 
+        global $DB;
+
         $jsonobject = json_decode($data);
 
         $userid = $jsonobject->userid;
@@ -254,10 +428,18 @@ class manageusers_table extends wunderbyte_table {
         $context = context_module::instance($settings->cmid);
 
         if (has_capability('mod/booking:bookforothers', $context)) {
-
             $option = singleton_service::get_instance_of_booking_option($settings->cmid, $optionid);
 
-            $option->user_delete_response($userid, false, false, false);
+            if (
+                $DB->record_exists(
+                    'booking_answers',
+                    ['userid' => $userid, 'optionid' => $optionid, 'waitinglist' => MOD_BOOKING_STATUSPARAM_RESERVED]
+                )
+            ) {
+                $option->user_delete_response($userid, true, false, false);
+            } else {
+                $option->user_delete_response($userid, false, false, false);
+            }
 
             return [
                 'success' => 1,
@@ -270,6 +452,57 @@ class manageusers_table extends wunderbyte_table {
                 'message' => get_string('norighttobook', 'mod_booking'),
             ];
         }
+    }
+
+    /**
+     * Change number of rows. Uses the transmitaction pattern (actionbutton).
+     * @param int $id
+     * @param string $data
+     * @return array
+     */
+    public function action_delete_checked_booking_answers(int $id, string $data): array {
+
+        global $DB;
+
+        $jsonobject = json_decode($data);
+
+        $bookinganswerids = $jsonobject->checkedids;
+
+        foreach ($bookinganswerids as $bookinganswerid) {
+            if ($answerrecord = $DB->get_record('booking_answers', ['id' => $bookinganswerid])) {
+                $userid = $answerrecord->userid;
+                $optionid = $answerrecord->optionid;
+
+                $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+                $context = context_module::instance($settings->cmid);
+
+                if (!has_capability('mod/booking:bookforothers', $context)) {
+                    throw new moodle_exception('Missing capability: mod/booking:bookforothers', 'mod_booking');
+                }
+
+                $option = singleton_service::get_instance_of_booking_option($settings->cmid, $optionid);
+
+                if ($answerrecord->waitinglist == MOD_BOOKING_STATUSPARAM_RESERVED) {
+                    $option->user_delete_response($userid, true, false, false);
+                } else {
+                    $option->user_delete_response($userid, false, false, false);
+                }
+            } else {
+                throw new moodle_exception(
+                    'invalidanswerid',
+                    'mod_booking',
+                    '',
+                    null,
+                    'Answer ID: ' . $bookinganswerid . ' not found in table booking_answers.'
+                );
+            }
+        }
+
+        return [
+            'success' => 1,
+            'message' => get_string('checkedanswersdeleted', 'mod_booking'),
+            'reload' => 1,
+        ];
     }
 
     /**
@@ -292,13 +525,14 @@ class manageusers_table extends wunderbyte_table {
             if (!empty($jsonobject->confirmwaitinglist)) {
                 $data[] = [
                     'label' => get_string('unconfirm', 'mod_booking'), // Name of your action button.
-                    'class' => 'btn btn-nolabel',
+                    'class' => "btn btn-nolabel unconfirmbooking-username-{$values->username} ",
                     'href' => '#', // You can either use the link, or JS, or both.
                     'iclass' => 'fa fa-ban', // Add an icon before the label.
                     'id' => $values->id,
                     'name' => $values->id,
                     'methodname' => 'unconfirmbooking', // The method needs to be added to your child of wunderbyte_table class.
-                    'data' => [ // Will be added eg as data-id = $values->id, so values can be transmitted to the method above.
+                    // Will be added eg as data-id = $values->id, so values can be transmitted to the method above.
+                    'data' => [
                         'id' => $values->id,
                         'labelcolumn' => 'username',
                         'titlestring' => 'unconfirmbooking',
@@ -312,12 +546,13 @@ class manageusers_table extends wunderbyte_table {
             }
         }
 
-        if ((!$ba->is_fully_booked()
-            || !empty($settings->jsonobject->useprice))
-            && empty($data)) {
+        if (
+            (!$ba->is_fully_booked() || !empty($settings->jsonobject->useprice))
+            && empty($data)
+        ) {
             $data[] = [
                 'label' => '', // Name of your action button.
-                'class' => 'btn btn-nolabel',
+                'class' => "btn btn-nolabel confirmbooking-username-{$values->username} ",
                 'href' => '#', // You can either use the link, or JS, or both.
                 'iclass' => 'fa fa-check', // Add an icon before the label.
                 'id' => $values->id,
@@ -347,7 +582,7 @@ class manageusers_table extends wunderbyte_table {
             'data' => [ // Will be added eg as data-id = $values->id, so values can be transmitted to the method above.
                 'id' => $values->id,
                 'labelcolumn' => 'username',
-                'titlestring' => 'deletebooking',
+                'titlestring' => 'delete',
                 'bodystring' => 'deletebookinglong',
                 'submitbuttonstring' => 'delete',
                 'component' => 'mod_booking',
@@ -359,11 +594,14 @@ class manageusers_table extends wunderbyte_table {
         // This transforms the array to make it easier to use in mustache template.
         table::transform_actionbuttons_array($data);
 
-        return $OUTPUT->render_from_template('local_wunderbyte_table/component_actionbutton', ['showactionbuttons' => $data]);
+        return $OUTPUT->render_from_template(
+            'local_wunderbyte_table/component_actionbutton',
+            ['showactionbuttons' => $data]
+        );
     }
 
     /**
-     * This handles the action column with buttons, icons, checkboxes.
+     * This handles the delete action column.
      *
      * @param stdClass $values
      * @return void
@@ -383,12 +621,83 @@ class manageusers_table extends wunderbyte_table {
             'data' => [ // Will be added eg as data-id = $values->id, so values can be transmitted to the method above.
                 'id' => $values->id,
                 'labelcolumn' => 'username',
-                'titlestring' => 'deletebooking',
+                'titlestring' => 'delete',
                 'bodystring' => 'deletebookinglong',
                 'submitbuttonstring' => 'delete',
                 'component' => 'mod_booking',
                 'optionid' => $values->optionid,
                 'userid' => $values->userid,
+            ],
+        ];
+
+        // This transforms the array to make it easier to use in mustache template.
+        table::transform_actionbuttons_array($data);
+
+        return $OUTPUT->render_from_template('local_wunderbyte_table/component_actionbutton', ['showactionbuttons' => $data]);
+    }
+
+    /**
+     * This handles the presence status action column.
+     *
+     * @param stdClass $values
+     * @return void
+     */
+    public function col_actions($values) {
+
+        global $OUTPUT;
+
+        $settings = singleton_service::get_instance_of_booking_option_settings($values->optionid);
+        $cmid = $settings->cmid ?? 0;
+
+        if (!empty($cmid)) {
+            $bookingsettings = singleton_service::get_instance_of_booking_settings_by_cmid($cmid);
+            $enablepresence = $bookingsettings->enablepresence ?? 0;
+            if ($enablepresence) {
+                $data[] = [
+                    'label' => get_string('presence', 'mod_booking'), // Name of your action button.
+                    'class' => 'btn btn-light btn-sm',
+                    'href' => '#', // You can either use the link, or JS, or both.
+                    'iclass' => 'fa fa-user-o', // Add an icon before the label.
+                    // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
+                    /* 'methodname' => 'mymethod', // The method needs to be added to your child of wunderbyte_table class. */
+                    'formname' => 'mod_booking\\form\\optiondates\\modal_change_status',
+                    'nomodal' => false,
+                    'id' => -1,
+                    'selectionmandatory' => false,
+                    'data' => [ // Will be added eg as data-id = $values->id, so values can be transmitted to the method above.
+                        'titlestring' => 'changepresencestatus',
+                        'submitbuttonstring' => 'save',
+                        'component' => 'mod_booking',
+                        'cmid' => $cmid,
+                        'optionid' => $values->optionid ?? 0,
+                        'optiondateid' => $values->optiondateid ?? 0,
+                        'userid' => $values->userid ?? 0,
+                        'status' => $values->status ?? 0,
+                    ],
+                ];
+            }
+        }
+
+        $data[] = [
+            'label' => get_string('notes', 'mod_booking'), // Name of your action button.
+            'class' => 'btn btn-light btn-sm',
+            'href' => '#', // You can either use the link, or JS, or both.
+            'iclass' => 'fa fa-pencil', // Add an icon before the label.
+            // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
+            /* 'methodname' => 'mymethod', // The method needs to be added to your child of wunderbyte_table class. */
+            'formname' => 'mod_booking\\form\\optiondates\\modal_change_notes',
+            'nomodal' => false,
+            'id' => -1,
+            'selectionmandatory' => false,
+            'data' => [ // Will be added eg as data-id = $values->id, so values can be transmitted to the method above.
+                'titlestring' => 'notes',
+                'submitbuttonstring' => 'save',
+                'component' => 'mod_booking',
+                'cmid' => $cmid,
+                'optionid' => $values->optionid ?? 0,
+                'optiondateid' => $values->optiondateid ?? 0,
+                'userid' => $values->userid ?? 0,
+                'notes' => $values->notes ?? '',
             ],
         ];
 

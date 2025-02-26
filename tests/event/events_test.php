@@ -37,22 +37,14 @@ use stdClass;
  * @copyright 2023 Wunderbyte GmbH <info@wunderbyte.at>
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class events_test extends advanced_testcase {
+final class events_test extends advanced_testcase {
 
     /**
      * Tests set up.
      */
     public function setUp(): void {
+        parent::setUp();
         $this->resetAfterTest();
-    }
-
-    /**
-     * Tear Down.
-     *
-     * @return void
-     *
-     */
-    public function tearDown(): void {
     }
 
     /**
@@ -93,6 +85,7 @@ class events_test extends advanced_testcase {
         $record = new stdClass();
         $record->bookingid = $booking->id;
         $record->text = 'Test option';
+        $record->chooseorcreatecourse = 1; // Reqiured.
         $record->courseid = $course->id;
         $record->description = 'Test description';
 
@@ -109,7 +102,7 @@ class events_test extends advanced_testcase {
      * @covers \mod_booking\event\teacher_added
      * @throws \coding_exception
      */
-    public function test_teacher_added() {
+    public function test_teacher_added(): void {
 
         list($user1, $option, $coursectx) = $this->returntestdata();
 
@@ -131,6 +124,9 @@ class events_test extends advanced_testcase {
         $this->assertEventContextNotUsed($event);
 
         $this->assertNotEmpty($event->get_name());
+
+        // Mandatory to solve potential cache issues.
+        singleton_service::destroy_booking_option_singleton($option->id);
     }
 
     /**
@@ -139,7 +135,7 @@ class events_test extends advanced_testcase {
      * @covers \mod_booking\event\teacher_removed
      * @throws \coding_exception
      */
-    public function test_teacher_removed() {
+    public function test_teacher_removed(): void {
 
         list($user1, $option, $coursectx) = $this->returntestdata();
 
@@ -161,5 +157,8 @@ class events_test extends advanced_testcase {
         $this->assertEventContextNotUsed($event);
 
         $this->assertNotEmpty($event->get_name());
+
+        // Mandatory to solve potential cache issues.
+        singleton_service::destroy_booking_option_singleton($option->id);
     }
 }

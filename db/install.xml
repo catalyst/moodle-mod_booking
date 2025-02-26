@@ -32,7 +32,7 @@
         <FIELD NAME="duration" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Duration - info field."/>
         <FIELD NAME="points" TYPE="number" LENGTH="10" NOTNULL="false" SEQUENCE="false" DECIMALS="2" COMMENT="Points, get from this course."/>
         <FIELD NAME="organizatorname" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Name of organizator - for sending emails."/>
-        <FIELD NAME="pollurl" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Url to send in email - poll for evaluation."/>
+        <FIELD NAME="pollurl" TYPE="char" LENGTH="1000" NOTNULL="false" SEQUENCE="false" COMMENT="Url to send in email - poll for evaluation."/>
         <FIELD NAME="addtogroup" TYPE="int" LENGTH="4" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="categoryid" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="pollurltext" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
@@ -40,7 +40,7 @@
         <FIELD NAME="notificationtext" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="userleave" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="enablecompletion" TYPE="int" LENGTH="3" NOTNULL="false" DEFAULT="1" SEQUENCE="false" COMMENT="For activity completion API!"/>
-        <FIELD NAME="pollurlteachers" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="pollurlteachers" TYPE="char" LENGTH="1000" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="pollurlteacherstext" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="activitycompletiontext" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="cancancelbook" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Can cancel or book when the seminar is started?"/>
@@ -93,7 +93,7 @@
         <FIELD NAME="bookingimagescustomfield" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="defaultoptionsort" TYPE="char" LENGTH="255" NOTNULL="false" DEFAULT="text" SEQUENCE="false"/>
         <FIELD NAME="defaultsortorder" TYPE="char" LENGTH="4" NOTNULL="false" DEFAULT="asc" SEQUENCE="false"/>
-        <FIELD NAME="showviews" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="mybooking,myoptions,showall,showactive,myinstitution" SEQUENCE="false" COMMENT="Which views are shown in view.php"/>
+        <FIELD NAME="showviews" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="mybooking,myoptions,optionsiamresponsiblefor,showall,showactive,myinstitution" SEQUENCE="false" COMMENT="Which views are shown in view.php"/>
         <FIELD NAME="customtemplateid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="autcractive" TYPE="int" LENGTH="1" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Active auto create option feature."/>
         <FIELD NAME="autcrprofile" TYPE="char" LENGTH="264" NOTNULL="false" SEQUENCE="false" COMMENT="Auto create user profile field to check."/>
@@ -135,13 +135,13 @@
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="addtocalendar" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Add event_option to calendar."/>
         <FIELD NAME="calendarid" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Calendar event id."/>
-        <FIELD NAME="pollurl" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="pollurl" TYPE="char" LENGTH="1000" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="groupid" TYPE="int" LENGTH="11" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="sent" TYPE="int" LENGTH="1" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="location" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="institution" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="address" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
-        <FIELD NAME="pollurlteachers" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="pollurlteachers" TYPE="char" LENGTH="1000" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="howmanyusers" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="pollsend" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="removeafterminutes" TYPE="int" LENGTH="5" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
@@ -172,6 +172,7 @@
         <FIELD NAME="credits" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Elective feature."/>
         <FIELD NAME="sortorder" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Elective feature."/>
         <FIELD NAME="json" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="This allows to add supplementary information which is not performance sensible like after booking actions etc."/>
+        <FIELD NAME="sqlfilter" TYPE="int" LENGTH="2" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="This is a marker to show if the availability json in this specific option needs to be parsed to filter. 0 means no, 1 means yes."/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
@@ -195,6 +196,7 @@
         <FIELD NAME="frombookingid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="numrec" TYPE="int" LENGTH="11" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="status" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="places" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="1" SEQUENCE="false" COMMENT="Number of places taken by this booking answer."/>
         <FIELD NAME="notes" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="json" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Supplementary information on this booking option json encoded for max flexibility."/>
       </FIELDS>
@@ -455,6 +457,7 @@
         <FIELD NAME="endtime" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="End time of the campaign as unix timestamp."/>
         <FIELD NAME="pricefactor" TYPE="number" LENGTH="10" NOTNULL="false" DEFAULT="1" SEQUENCE="false" DECIMALS="2"/>
         <FIELD NAME="limitfactor" TYPE="number" LENGTH="10" NOTNULL="false" DEFAULT="1" SEQUENCE="false" DECIMALS="2" COMMENT="Value to multiply booking limit with."/>
+        <FIELD NAME="extendlimitforoverbooked" TYPE="int" LENGTH="2" NOTNULL="false" SEQUENCE="false" COMMENT="Setting to see if the booking limit should take into overbookings into account."/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
@@ -467,6 +470,8 @@
         <FIELD NAME="rulename" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Name of the rule"/>
         <FIELD NAME="rulejson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON defining the rule."/>
         <FIELD NAME="eventname" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="For eventbased rules, for faster execution"/>
+        <FIELD NAME="useastemplate" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="The value 1 means that this rule is a template."/>
+        <FIELD NAME="isactive" TYPE="int" LENGTH="2" NOTNULL="false" DEFAULT="1" SEQUENCE="false" COMMENT="Only active rules will be applied."/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
@@ -546,6 +551,62 @@
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
+    </TABLE>
+    <TABLE NAME="booking_enrollink_bundles" COMMENT="A bundle of places (multiple or single) for a given course to be enroled into.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="course to be enrolled to"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="user who ordered the bundle"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="20" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="places" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="total amount of places of this bundle (seats in course)"/>
+        <FIELD NAME="erlid" TYPE="char" LENGTH="255" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="hash value to double check the matching with the items from the bundle"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="baid" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="id of bookinganswer with which the bundle was created"/>
+        <FIELD NAME="optionid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="erlid" UNIQUE="true" FIELDS="erlid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="booking_enrollink_items" COMMENT="The items (places/seats in courses) that can be acquired in a bundle">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="erlid" TYPE="char" LENGTH="255" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="hash of the bundle this item is referring to"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="id of the user who bought this item"/>
+        <FIELD NAME="consumed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="0 still open, 1 consumed"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="20" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="timestamp when this item was created"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="timestamp of update (like cancellation)"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+    </TABLE>
+
+    <TABLE NAME="booking_optiondates_answers" COMMENT="This manages presence status for users for optiondates (sessions)">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="optiondateid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="optionid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="status" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="json" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="notes" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="optid_idx" UNIQUE="false" FIELDS="optionid"/>
+        <INDEX NAME="optdatid_idx" UNIQUE="false" FIELDS="optiondateid"/>
+        <INDEX NAME="usid_idx" UNIQUE="false" FIELDS="userid"/>
+      </INDEXES>
     </TABLE>
   </TABLES>
 </XMLDB>

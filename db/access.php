@@ -104,8 +104,7 @@ $capabilities = [
         'captype' => 'write',
         'contextlevel' => CONTEXT_MODULE,
         'archetypes' => [
-            'teacher' => CAP_ALLOW,
-            'editingteacher' => CAP_ALLOW,
+            'coursecreator' => CAP_ALLOW,
             'manager' => CAP_ALLOW,
         ],
     ],
@@ -264,12 +263,13 @@ $capabilities = [
             'manager' => CAP_ALLOW,
         ],
     ],
-    // Capability to view reports without write access.
+    // Limited capability to edit own booking options.
     'mod/booking:limitededitownoption' => [
         'captype' => 'write',
         'contextlevel' => CONTEXT_MODULE,
         'archetypes' => [
             'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
         ],
     ],
     // Capability to edit the option form config.
@@ -285,7 +285,7 @@ $capabilities = [
     // Has to be assigned via global role!
     'mod/booking:editbookingrules' => [
         'captype' => 'write',
-        'contextlevel' => CONTEXT_SYSTEM,
+        'contextlevel' => CONTEXT_COURSE,
         'archetypes' => [
             'manager' => CAP_ALLOW,
         ],
@@ -296,6 +296,7 @@ $capabilities = [
         'contextlevel' => CONTEXT_MODULE,
         'archetypes' => [
             'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
         ],
     ],
     // Restricted option form capability. Can be configured via settings.
@@ -322,5 +323,38 @@ $capabilities = [
     'mod/booking:reducedoptionform5' => [
         'captype' => 'write',
         'contextlevel' => CONTEXT_MODULE,
+    ],
+    // Book anyone.
+    'mod/booking:bookanyone' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // Capability to view reports without write access.
+    'mod/booking:seepersonalteacherinformation' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    // Capability to edit user profile descriptions.
+    'mod/booking:editteacherdescription' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+    /* Capability to manage users on (new) report.php.  */
+    'mod/booking:managebookedusers' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+        ],
     ],
 ];

@@ -40,6 +40,9 @@ class select_teacher_in_bo implements booking_rule_condition {
     /** @var string $rulename */
     public $conditionname = 'select_teacher_in_bo';
 
+    /** @var string $conditionnamestringid Id of localized string for name of rule condition*/
+    protected $conditionnamestringid = 'selectteacherinbo';
+
     /** @var string $rulejson a json string for a booking rule */
     public $rulejson = '';
 
@@ -73,12 +76,12 @@ class select_teacher_in_bo implements booking_rule_condition {
      * Only customizable functions need to return their necessary form elements.
      *
      * @param MoodleQuickForm $mform
-     * @param array $ajaxformdata
+     * @param ?array $ajaxformdata
      * @return void
      */
-    public function add_condition_to_mform(MoodleQuickForm &$mform, array &$ajaxformdata = null) {
+    public function add_condition_to_mform(MoodleQuickForm &$mform, ?array &$ajaxformdata = null) {
         $mform->addElement('static', 'condition_select_teacher_in_bo', '',
-                get_string('condition_select_teacher_in_bo_desc', 'mod_booking'));
+                get_string('conditionselectteacherinbo_desc', 'mod_booking'));
 
     }
 
@@ -89,7 +92,7 @@ class select_teacher_in_bo implements booking_rule_condition {
      * @return string the name of the rule
      */
     public function get_name_of_condition($localized = true) {
-        return $localized ? get_string($this->conditionname, 'mod_booking') : $this->conditionname;
+        return $localized ? get_string($this->conditionnamestringid, 'mod_booking') : $this->conditionname;
     }
 
     /**

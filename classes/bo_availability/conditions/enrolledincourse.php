@@ -26,6 +26,7 @@ namespace mod_booking\bo_availability\conditions;
 
 use context_course;
 use context_system;
+use Exception;
 use mod_booking\bo_availability\bo_condition;
 use mod_booking\bo_availability\bo_info;
 use mod_booking\booking_option_settings;
@@ -51,19 +52,53 @@ class enrolledincourse implements bo_condition {
     /** @var bool $overridable Indicates if the condition can be overridden. */
     public $overridable = true;
 
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = true;
+
     /** @var stdClass $customsettings an stdclass coming from the json which passes custom settings */
     public $customsettings = null;
 
     /**
+     * Singleton instance.
+     *
+     * @var object
+     */
+    private static $instance = null;
+
+    /**
+     * Singleton instance.
+     *
+     * @param ?int $id
+     * @return object
+     *
+     */
+    public static function instance(?int $id = null): object {
+        if (empty(self::$instance)) {
+            self::$instance = new self($id);
+        }
+        return self::$instance;
+    }
+
+    /**
      * Constructor.
      *
-     * @param int $id
+     * @param ?int $id
      * @return void
      */
-    public function __construct(int $id = null) {
+    private function __construct(?int $id = null) {
         if ($id) {
             $this->id = $id;
         }
+    }
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
     }
 
     /**
@@ -103,19 +138,32 @@ class enrolledincourse implements bo_condition {
 
             if (empty($this->customsettings->courseidsoperator) || $this->customsettings->courseidsoperator != 'OR') {
                 foreach ($courseids as $courseid) {
-                    $context = context_course::instance($courseid);
-                    $enrolled = $enrolled && is_enrolled($context, $userid, '', true);
+                    try {
+                        $context = context_course::instance($courseid);
+                        $enrolled = $enrolled && is_enrolled($context, $userid, '', true);
+                    } catch (Exception $e) {
+                        // If the course does not exist anymore, we can't be enrolled.
+                        $enrolled = false;
+                    }
+
                     // We only get true, if the user is enrolled in ALL courses of the condition.
                 }
             } else {
                 $enrolled = false;
                 foreach ($courseids as $courseid) {
-                    $context = context_course::instance($courseid);
-                    // As soon as we find an enrollement, we break.
-                    if (is_enrolled($context, $userid)) {
-                        $enrolled = true;
-                        break;
+
+                    try {
+                        $context = context_course::instance($courseid);
+                        // As soon as we find an enrollement, we break.
+                        if (is_enrolled($context, $userid)) {
+                            $enrolled = true;
+                            break;
+                        }
+                    } catch (Exception $e) {
+                        // Do nothing. Just so linter does not call it empty.
+                        $a = 1;
                     }
+
                     // We only get true, if the user is enrolled in one of the courses of the condition.
                 }
             }
@@ -129,6 +177,18 @@ class enrolledincourse implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -206,7 +266,7 @@ class enrolledincourse implements bo_condition {
             }
 
             $mform->addElement('advcheckbox', 'bo_cond_enrolledincourse_restrict',
-                    get_string('bo_cond_enrolledincourse', 'mod_booking'));
+                    get_string('bocondenrolledincourse', 'mod_booking'));
 
             $enrolledincourseoptions = [
                 'tags' => false,
@@ -224,7 +284,7 @@ class enrolledincourse implements bo_condition {
             ];
 
             $mform->addElement('autocomplete', 'bo_cond_enrolledincourse_courseids',
-                get_string('course_s', 'mod_booking'), $coursesarray, $enrolledincourseoptions);
+                get_string('courses', 'mod_booking'), $coursesarray, $enrolledincourseoptions);
             $mform->hideIf('bo_cond_enrolledincourse_courseids', 'bo_cond_enrolledincourse_restrict', 'notchecked');
 
             $mform->addElement('select', 'bo_cond_enrolledincourse_courseids_operator',
@@ -252,8 +312,9 @@ class enrolledincourse implements bo_condition {
                 $fullclassname = get_class($overridecondition); // With namespace.
                 $classnameparts = explode('\\', $fullclassname);
                 $shortclassname = end($classnameparts); // Without namespace.
+                $shortclassname = str_replace("_", "", $shortclassname); // Remove underscroll.
                 $overrideconditionsarray[$overridecondition->id] =
-                    get_string('bo_cond_' . $shortclassname, 'mod_booking');
+                    get_string('bocond' . $shortclassname, 'mod_booking');
             }
 
             // Check for json conditions that might have been saved before.
@@ -264,13 +325,13 @@ class enrolledincourse implements bo_condition {
                     if (!empty($jsonconditions)) {
                         foreach ($jsonconditions as $jsoncondition) {
                             $currentclassname = $jsoncondition->class;
-                            $currentcondition = new $currentclassname();
+                            $currentcondition = $currentclassname::instance();
                             // Currently conditions of the same type cannot be combined with each other.
                             if ($jsoncondition->id != $this->id
                                 && isset($currentcondition->overridable)
                                 && ($currentcondition->overridable == true)) {
-                                $overrideconditionsarray[$jsoncondition->id] = get_string('bo_cond_' .
-                                    $jsoncondition->name, 'mod_booking');
+                                $overrideconditionsarray[$jsoncondition->id] = get_string('bocond' .
+                                    str_replace("_", "", $jsoncondition->name), 'mod_booking');
                             }
                         }
                     }
@@ -290,7 +351,7 @@ class enrolledincourse implements bo_condition {
         } else {
             // No PRO license is active.
             $mform->addElement('static', 'bo_cond_enrolledincourse_restrict',
-                get_string('bo_cond_enrolledincourse', 'mod_booking'),
+                get_string('bocondenrolledincourse', 'mod_booking'),
                 get_string('proversiononly', 'mod_booking'));
         }
 
@@ -304,7 +365,7 @@ class enrolledincourse implements bo_condition {
      * @return stdClass|null the object for the JSON
      */
     public function get_condition_object_for_json(stdClass $fromform): stdClass {
-        $conditionobject = new stdClass;
+        $conditionobject = new stdClass();
         if (!empty($fromform->bo_cond_enrolledincourse_restrict)) {
             // Remove the namespace from classname.
             $classname = __CLASS__;
@@ -370,8 +431,13 @@ class enrolledincourse implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
         $label = $this->get_description_string(false, $full, $settings);
 
@@ -387,11 +453,19 @@ class enrolledincourse implements bo_condition {
      * @return string
      */
     private function get_description_string(bool $isavailable, bool $full, booking_option_settings $settings) {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
         global $DB;
 
         if ($isavailable) {
-            $description = $full ? get_string('bo_cond_enrolledincourse_full_available', 'mod_booking') :
-                get_string('bo_cond_enrolledincourse_available', 'mod_booking');
+            $description = $full ? get_string('bocondenrolledincoursefullavailable', 'mod_booking') :
+                get_string('bocondenrolledincourseavailable', 'mod_booking');
         } else {
             if (!$this->customsettings) {
                 // This description can only work with the right custom settings.
@@ -411,20 +485,22 @@ class enrolledincourse implements bo_condition {
             $a = '';
             $coursestringsarr = [];
             foreach ($this->customsettings->courseids as $courseid) {
-                $coursename = $DB->get_field('course', 'fullname', ['id' => $courseid]);
-                $coursestringsarr[] = $coursename;
+                if ($course = singleton_service::get_course($courseid)) {
+                    $coursestringsarr[] = $course->fullname;
+                }
             }
+
             $a = implode(', ', $coursestringsarr);
 
             if (isset($this->customsettings->courseidsoperator)
                 && $this->customsettings->courseidsoperator == 'OR') {
                 $description = $full ?
-                    get_string('bo_cond_enrolledincourse_full_not_available', 'mod_booking', $a) :
-                    get_string('bo_cond_enrolledincourse_not_available', 'mod_booking', $a);
+                    get_string('bocondenrolledincoursefullnotavailable', 'mod_booking', $a) :
+                    get_string('bocondenrolledincoursenotavailable', 'mod_booking', $a);
             } else {
                 $description = $full ?
-                    get_string('bo_cond_enrolledincourse_full_not_available_and', 'mod_booking', $a) :
-                    get_string('bo_cond_enrolledincourse_not_available_and', 'mod_booking', $a);
+                    get_string('bocondenrolledincoursefullnotavailableand', 'mod_booking', $a) :
+                    get_string('bocondenrolledincoursenotavailableand', 'mod_booking', $a);
             }
 
         }

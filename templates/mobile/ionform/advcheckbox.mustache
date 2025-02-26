@@ -1,0 +1,33 @@
+{{=<% %>=}}
+
+<%#arguments%>
+            <% key %>
+            <br>
+            <% value %>
+<%/arguments%>
+
+<div>
+<%#myform%>
+    <ion-item>
+      <ion-label>
+        <% label %>
+      </ion-label>
+      <ion-checkbox 
+        slot="start"
+        name="<% name %>"
+        value="<% value %>"
+        <%# value %>
+          [class.checkbox-checked]="<% value %> == 1"
+          [class.checkbox-unchecked]="<% value %> != 1"
+        <%/ value %>
+        [(ngModel)]='CONTENT_OTHERDATA.data["<% name %>"]'
+      >
+      </ion-checkbox>
+      <%# error %>
+        <ion-text color="danger">
+            <% error %>
+        </ion-text>
+      <%/ error %>
+    </ion-item>
+  <%/myform%>
+</div>

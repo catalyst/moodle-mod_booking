@@ -27,6 +27,7 @@
  namespace mod_booking\bo_availability\conditions;
 
 use mod_booking\bo_availability\bo_condition;
+use mod_booking\bo_availability\bo_info;
 use mod_booking\booking_option_settings;
 use mod_booking\price;
 use MoodleQuickForm;
@@ -48,6 +49,19 @@ class isloggedinprice implements bo_condition {
 
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_ISLOGGEDINPRICE;
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = false;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -80,13 +94,11 @@ class isloggedinprice implements bo_condition {
         // This is the return value. Not available to begin with.
         $isavailable = false;
 
-        if (isloggedin()) {
+        if (isloggedin() && !isguestuser()) {
             $isavailable = true;
         } else {
-
             // If the user is not yet booked we return true.
             if (empty($settings->jsonobject->useprice)) {
-
                 $isavailable = true;
             }
         }
@@ -97,6 +109,18 @@ class isloggedinprice implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -139,7 +163,7 @@ class isloggedinprice implements bo_condition {
 
         $isavailable = $this->is_available($settings, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string($isavailable, $full, $settings);
 
         return [$isavailable, $description, MOD_BOOKING_BO_PREPAGE_NONE, MOD_BOOKING_BO_BUTTON_MYBUTTON];
     }
@@ -181,37 +205,65 @@ class isloggedinprice implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
-        $priceitems = price::get_prices_from_cache_or_db('option', $settings->id);
-        $sortedpriceitems = [];
-        foreach ($priceitems as $priceitem) {
+        global $USER;
 
-            $pricecategory = price::get_active_pricecategory_from_cache_or_db($priceitem->pricecategoryidentifier);
-
-            $priceitemarray = (array)$priceitem;
-
-            if (!empty($pricecategory)) {
-                $priceitemarray['pricecategoryname'] = $pricecategory->name;
-                // Actually not yet sorted.
-                $sortedpriceitems[$pricecategory->pricecatsortorder] = $priceitemarray;
-            }
+        if (empty($userid)) {
+            $userid = $USER->id;
         }
 
-        // Now we sort the array according to the sort order defined in price categories.
-        ksort($sortedpriceitems);
-        // The mustache template cannot handle keys, so we remove them now.
-        $sortedpriceitems = array_values($sortedpriceitems);
-
-        // And add them to the returned array.
-        $returnarray['priceitems'] = $sortedpriceitems;
-
-        if ($fullwidth) {
-            $returnarray['fullwidth'] = $fullwidth;
+        // Fetch config.
+        $displayloginbutton = self::add_loginbutton();
+        $link = "";
+        $style = "";
+        $label = get_string('bocondisloggedinnotavailable', 'mod_booking');
+        // Render button according to settings.
+        if (!empty($displayloginbutton['showbutton'])) {
+            $link = "/login/index.php";
+            $style = "bookinglinkbutton btn btn-" . $displayloginbutton['buttonstyle'];
         }
 
-        return ['mod_booking/col_price', $returnarray];
+        return bo_info::render_button(
+            $settings,
+            $userid,
+            $label,
+            $link !== '' ? $style : 'hidden',
+            true,
+            $fullwidth,
+            'alert',
+            'option',
+            true,
+            '',
+            $link,
+            'fa-play'
+        );
+    }
+
+    /**
+     * Append data of loginbutton to dataarray for template
+     *
+     *
+     * @return array
+     *
+     */
+    public static function add_loginbutton(): array {
+        $data = [
+            'showbutton' => 0,
+        ];
+        $showbutton = get_config('booking', 'displayloginbuttonforbookingoptions');
+        if (!empty($showbutton)) {
+            $style = get_config('booking', 'loginbuttonforbookingoptionscoloroptions');
+            $data['showbutton'] = 1;
+            $data['buttonstyle'] = $style;
+        }
+        return $data;
     }
 
     /**
@@ -219,15 +271,25 @@ class isloggedinprice implements bo_condition {
      *
      * @param bool $isavailable
      * @param bool $full
-     * @return void
+     * @param booking_option_settings $settings
+     * @return string
      */
-    private function get_description_string($isavailable, $full) {
+    private function get_description_string($isavailable, $full, $settings) {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
+
         if ($isavailable) {
-            $description = $full ? get_string('bo_cond_priceisset_full_available', 'mod_booking') :
-                get_string('bo_cond_priceisset_available', 'mod_booking');
+            $description = $full ? get_string('bocondpriceissetfullavailable', 'mod_booking') :
+                get_string('bocondpriceissetavailable', 'mod_booking');
         } else {
-            $description = $full ? get_string('bo_cond_priceisset_full_not_available', 'mod_booking') :
-                get_string('bo_cond_priceisset_not_available', 'mod_booking');
+            $description = $full ? get_string('bocondpriceissetfullnotavailable', 'mod_booking') :
+                get_string('bocondpriceissetnotavailable', 'mod_booking');
         }
         return $description;
     }

@@ -24,16 +24,19 @@
 
 namespace mod_booking\form\condition;
 
+use context_module;
+
 defined('MOODLE_INTERNAL') || die();
 
 global $CFG;
 require_once("$CFG->libdir/formslib.php");
 require_once("$CFG->dirroot/mod/booking/lib.php");
 
-use cache;
 use context;
 use context_system;
 use core_form\dynamic_form;
+use mod_booking\bo_availability\conditions\customform;
+use mod_booking\local\mobile\customformstore;
 use mod_booking\singleton_service;
 use moodle_url;
 use stdClass;
@@ -83,12 +86,13 @@ class customform_form extends dynamic_form {
         $optionid = $formdata['id'];
         $userid = $formdata['userid'] ?? $USER->id;
 
-        $cache = cache::make('mod_booking', 'conditionforms');
+        $customformstore = new customformstore($userid, $optionid);
+        $cachedata = $customformstore->get_customform_data();
 
-        $cachekey = $userid . '_' . $optionid . '_customform';
-
-        if ($cachedata = $cache->get($cachekey)) {
-            $data->customform_checkbox = $cachedata->customform_checkbox;
+        foreach ((array)$cachedata as $key => $value) {
+            if (strpos($key, 'customform_') !== false) {
+                $data->{$key} = $value;
+            }
         }
 
         $this->set_data($data);
@@ -106,10 +110,8 @@ class customform_form extends dynamic_form {
 
         $userid = $data->userid ?? $USER->id;
 
-        $cache = cache::make('mod_booking', 'customformuserdata');
-        $cachekey = $userid . "_" . $data->id . '_customform';
-
-        $cache->set($cachekey, $data);
+        $customformstore = new customformstore($userid, $data->id);
+        $customformstore->set_customform_data($data);
 
         return $data;
     }
@@ -140,35 +142,192 @@ class customform_form extends dynamic_form {
                 $customform = $condition;
             }
         }
+        $deleteform = false;
+        if (isset($customform->deleteinfoscheckboxadmin) && !empty($customform->deleteinfoscheckboxadmin)) {
+            $deleteformvalue = $customform->deleteinfoscheckboxadmin ?? 0;
+            $mform->addElement('hidden', 'deleteinfoscheckboxadmin', $deleteformvalue);
+            $deleteform = true; // If admin checkbox is set, no need to check for usercheckbox.
+        }
 
         foreach ($customform->formsarray as $formkey => $formvalue) {
-
             $formelements = [];
 
             $mform = $this->_form;
 
             $counter = 1;
             foreach ($formvalue as $formelementkey => $formelementvalue) {
-
                 // We might need custom solutions, therefore we have the switch here.
                 switch ($formelementvalue->formtype) {
-
                     case 'static':
-                        $mform->addElement($formelementvalue->formtype, 'customform_element_' . $counter,
+                        $identifier = 'customform_' . $formelementvalue->formtype . '_' . $counter;
+                        $mform->addElement(
+                            'static',
+                            $identifier,
+                            format_string($formelementvalue->label),
+                            $formelementvalue->value
+                        );
+                        break;
+                    case 'advcheckbox':
+                        $identifier = 'customform_' . $formelementvalue->formtype . '_' . $counter;
+                        $mform->addElement(
+                            'advcheckbox',
+                            $identifier,
                             '',
-                            $formelementvalue->value);
+                            format_string($formelementvalue->label) ?? "Label " . $counter
+                        );
                         break;
-                    default:
-                        $mform->addElement($formelementvalue->formtype, 'customform_checkbox_' . $counter, '',
-                        $formelementvalue->label ?? "Label " . $counter);
+                    case 'shorttext':
+                        $identifier = 'customform_' . $formelementvalue->formtype . '_' . $counter;
+                        $mform->addElement(
+                            'text',
+                            $identifier,
+                            format_string($formelementvalue->label) ?? "Label " . $counter
+                        );
+                        $mform->setDefault('customform_shorttext_' . $counter, $formelementvalue->value);
+                        $mform->setType('customform_shorttext_' . $counter, PARAM_TEXT);
                         break;
+                    case 'select':
+                        // Create the array.
+                        $identifier = 'customform_' . $formelementvalue->formtype . '_' . $counter;
+                        $lines = explode(PHP_EOL, $formelementvalue->value);
+                        $options = [];
+                        foreach ($lines as $line) {
+                            $linearray = explode(' => ', $line);
+                            if (count($linearray) > 1) {
+                                $options[$linearray[0]] = format_string($linearray[1]);
+                                if (count($linearray) > 2) {
+                                    $context = context_module::instance($settings->cmid);
+                                    if (isset($linearray[4]) && !has_capability('mod/booking:bookforothers', $context)) {
+                                        // Those are the users that are allowed to see this option.
+                                        $allowedusers = explode(',', $linearray[4]);
+                                        if (!in_array($userid, $allowedusers)) {
+                                            unset($options[$linearray[0]]);
+                                            continue;
+                                        }
+                                    }
+                                    $ba = singleton_service::get_instance_of_booking_answers($settings);
+                                    $expectedvalue = $linearray[0];
+                                    $filteredba = array_filter(
+                                        $ba->usersonlist,
+                                        function ($userbookings) use ($identifier, $expectedvalue) {
+                                            return isset($userbookings->$identifier)
+                                                    && $userbookings->$identifier === $expectedvalue;
+                                        }
+                                    );
+                                    // Check availabilty.
+                                    $leftover = $linearray[2] - count($filteredba);
+                                    if (empty($linearray[2])) {
+                                        $availablestring = '';
+                                    } else if ($leftover == 0) {
+                                        unset($options[$linearray[0]]);
+                                    } else {
+                                        $availablestring = ', ' . $leftover  .
+                                            ' ' . get_string('bocondcustomformstillavailable', 'mod_booking');
+                                    }
+
+                                    // Check price.
+                                    $priceinfostring = '';
+                                    if (isset($linearray[3])) {
+                                        // Add price and default currency.
+                                        $customformstore = new customformstore(
+                                            (int) $formdata['userid'],
+                                            (int) $formdata['id']
+                                            );
+                                        $price = $customformstore->get_price_and_currency_for_user($linearray[3]);
+                                        if (!empty($price)) {
+                                            $priceinfostring = ' (+' . $price . ')';
+                                        }
+                                    }
+                                    // Append infos to select.
+                                    $options[$linearray[0]] .= $availablestring;
+                                    $options[$linearray[0]] .= $priceinfostring;
+                                }
+                            } else {
+                                $options[] = format_string($line);
+                            }
+                        }
+                        $mform->addElement(
+                            'select',
+                            $identifier,
+                            format_string($formelementvalue->label) ?? "Label " . $counter,
+                            $options
+                        );
+                        break;
+                    case 'url':
+                        $identifier = 'customform_' . $formelementvalue->formtype . '_' . $counter;
+                        $mform->addElement(
+                            'text',
+                            $identifier,
+                            format_string($formelementvalue->label) ?? "Label " . $counter
+                        );
+                        $mform->setDefault('customform_url_' . $counter, $formelementvalue->value);
+                        break;
+                    case 'mail':
+                        $identifier = 'customform_' . $formelementvalue->formtype . '_' . $counter;
+                        $mform->addElement(
+                            'text',
+                            $identifier,
+                            format_string($formelementvalue->label) ?? "Label " . $counter
+                        );
+                        $mform->setDefault('customform_mail_' . $counter, $formelementvalue->value);
+                        break;
+                    case 'deleteinfoscheckboxuser':
+                        if ($deleteform) {
+                            // Only one will be rendered rendered.
+                            break;
+                        }
+                        $identifier = 'customform_' . $formelementvalue->formtype;
+                        $deleteform = true;
+                        $mform->addElement(
+                            'advcheckbox',
+                            $identifier,
+                            get_string('bocondcustomformdeleteinfoscheckboxusertext', 'mod_booking'),
+                            get_string('apply', 'mod_booking')
+                        );
+                        break;
+                    case 'enrolusersaction':
+                        $identifier = 'customform_' . $formelementvalue->formtype . '_' . $counter;
+                        $mform->addElement(
+                            'text',
+                            $identifier,
+                            format_string($formelementvalue->label) ?? "Label " . $counter
+                        );
+                        $mform->setDefault('customform_enrolusersaction_' . $counter, $formelementvalue->value);
+                        $mform->setType('customform_enrolusersaction_' . $counter, PARAM_TEXT);
+                        $mform->addElement(
+                            'advcheckbox',
+                            'customform_enroluserwhobookedcheckbox_' . $formelementvalue->formtype . '_' . $counter,
+                            get_string('enroluserwhobookedtocourse', 'mod_booking'),
+                            get_string('apply', 'mod_booking')
+                        );
+                        $mform->setDefault(
+                            'customform_enroluserwhobookedcheckbox_' . $formelementvalue->formtype . '_' . $counter,
+                            1
+                        );
+                        $mform->addElement(
+                            'static',
+                            'infoenroluserwhobookedstatic',
+                            '',
+                            get_string('enroluserwhobookedtocoursewarning', 'mod_booking')
+                        );
+                        $mform->hideIf(
+                            'infoenroluserwhobookedstatic',
+                            $identifier,
+                            'neq',
+                            '1'
+                        );
+                        $mform->hideIf(
+                            'infoenroluserwhobookedstatic',
+                            'customform_enroluserwhobookedcheckbox_' . $formelementvalue->formtype . '_' . $counter,
+                            'neq',
+                            '1'
+                        );
                 }
 
                 $counter++;
             }
 
             $dataarray['data']['formsarray'][] = $formelements;
-
         }
     }
 
@@ -181,19 +340,17 @@ class customform_form extends dynamic_form {
     public function validation($data, $files): array {
         $errors = [];
 
-        // All checkboxes have to be checked right now.
-        // Todo: Make this generic!
-        foreach ($data as $key => $value) {
-
-            if (strpos($key, 'checkbox') != false) {
-                if ($value != 1) {
-                    $errors[$key] = get_string('customformnotchecked', 'mod_booking');
-                }
-            }
-
+        if ($data['id']) {
+            $id = $data['id'];
+        } else {
+            return $errors;
         }
 
-        return $errors;
+        // We have to pass by the option settings.
+        $settings = singleton_service::get_instance_of_booking_option_settings((int)$id);
+        $customform = customform::return_formelements($settings);
+        $customformstore = new customformstore($data['userid'], $id);
+        return $customformstore->validation($customform, $data);
     }
 
     /**

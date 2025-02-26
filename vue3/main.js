@@ -25,9 +25,10 @@
 import { createApp } from 'vue';
 import VueInputAutowidth from 'vue-input-autowidth';
 import { createAppStore } from './store';
-import Notifications from '@kyvg/vue3-notification'
-import router from './router/router'
-
+import Notifications from '@kyvg/vue3-notification';
+import router from './router/router';
+import './scss/custom.scss';
+import vSelect from "vue-select";
 // Enables the Composition API
 window.__VUE_OPTIONS_API__ = true;
 // Disable devtools in production
@@ -38,13 +39,13 @@ function init() {
     /* eslint-disable no-undef */
     __webpack_public_path__ = M.cfg.wwwroot + '/mod/booking/amd/build/';
     /* eslint-enable no-undef */
-
     const localBookingAppElement = document.getElementById('mod-booking-app');
     if (!localBookingAppElement.__vue_app__) {
 
         const app = createApp({});
         app.use(VueInputAutowidth);
         app.use(Notifications);
+        app.component("v-select", vSelect);
 
         const store = createAppStore();
         store.dispatch('loadComponentStrings');

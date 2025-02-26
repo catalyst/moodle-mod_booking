@@ -27,6 +27,7 @@ namespace mod_booking\option\fields;
 use mod_booking\bo_availability\bo_info;
 use mod_booking\booking_option_settings;
 use mod_booking\option\field_base;
+use mod_booking\singleton_service;
 use MoodleQuickForm;
 use stdClass;
 
@@ -38,7 +39,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class enrolmentstatus extends field_base {
-
     /**
      * This ID is used for sorting execution.
      * @var int
@@ -80,19 +80,58 @@ class enrolmentstatus extends field_base {
     public static $incompatiblefields = [];
 
     /**
+     * This function interprets the value from the form and, if useful...
+     * ... relays it to the new option class for saving or updating.
+     * @param stdClass $formdata
+     * @param stdClass $newoption
+     * @param int $updateparam
+     * @param ?mixed $returnvalue
+     * @return string // If no warning, empty string.
+     */
+    public static function prepare_save_field(
+        stdClass &$formdata,
+        stdClass &$newoption,
+        int $updateparam,
+        $returnvalue = null
+    ): array {
+
+        parent::prepare_save_field($formdata, $newoption, $updateparam, 0);
+
+        $instance = new enrolmentstatus();
+        $changes = $instance->check_for_changes($formdata, $instance);
+
+        return $changes;
+    }
+
+    /**
      * Instance form definition
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
-        $mform->addElement('advcheckbox', 'enrolmentstatus', get_string('enrolmentstatus', 'mod_booking'),
-            '', ['group' => 1], [2, 0]);
+        $mform->addElement(
+            'advcheckbox',
+            'enrolmentstatus',
+            get_string('enrolmentstatus', 'mod_booking'),
+            '',
+            ['group' => 1],
+            [2, 0]
+        );
         $mform->setType('enrolmentstatus', PARAM_INT);
         $mform->setDefault('enrolmentstatus', 2);
         $mform->addHelpButton('enrolmentstatus', 'enrolmentstatus', 'mod_booking');
+        $mform->hideIf('enrolmentstatus', 'selflearningcourse', 'eq', 1);
     }
 
     /**
@@ -109,6 +148,7 @@ class enrolmentstatus extends field_base {
             $data->enrolmentstatus = $data->enrolmentstatus ?? 2; // Default is always 2.
         } else {
             if (!empty($data->enrolmentstatus) && $data->enrolmentstatus == 1) {
+                // phpcs:ignore moodle.Commenting.TodoComment.MissingInfoInline
                 // TODO: Fix course inscription.
                 // There is a fundamentally flawed way of inscribing users to courses.
                 // As long as this has not been fixed, we need to set this value to 0.
@@ -119,5 +159,65 @@ class enrolmentstatus extends field_base {
             $value = $settings->enrolmentstatus ?? 2;
             $data->enrolmentstatus = $value;
         }
+    }
+
+    /**
+     * Check if there is a difference between the former and the new values of the formdata.
+     *
+     * @param stdClass $formdata
+     * @param field_base $self
+     * @param mixed $mockdata // Only needed if there the object needs params for the save_data function.
+     * @param string $key
+     * @param mixed $value
+     *
+     * @return array
+     *
+     */
+    public function check_for_changes(
+        stdClass $formdata,
+        field_base $self,
+        $mockdata = '',
+        string $key = '',
+        $value = ''
+    ): array {
+
+        if (!isset($self)) {
+            return [];
+        }
+
+        $excludeclassesfromtrackingchanges = MOD_BOOKING_CLASSES_EXCLUDED_FROM_CHANGES_TRACKING;
+
+        $classname = 'enrolementstatus';
+        if (in_array($classname, $excludeclassesfromtrackingchanges)) {
+            return [];
+        }
+
+        $changes = [];
+        $value = $formdata->enrolmentstatus;
+
+        $mockdata = empty($mockdata) ? new stdClass() : $mockdata;
+
+        // Check if there were changes and return these.
+        if (!empty($formdata->id) && isset($value)) {
+            $settings = singleton_service::get_instance_of_booking_option_settings($formdata->id);
+            $self::set_data($mockdata, $settings);
+
+            $oldvalue = $mockdata->enrolmentstatus;
+            $newvalue = $value;
+
+            if (
+                $oldvalue != $newvalue
+                && !(empty($oldvalue) && empty($newvalue))
+            ) {
+                $changes = [
+                    'changes' => [
+                        'fieldname' => $classname,
+                        'oldvalue' => empty($oldvalue) ? 0 : 1,
+                        'newvalue' => empty($newvalue) ? 0 : 1,
+                    ],
+                ];
+            }
+        }
+        return $changes;
     }
 }

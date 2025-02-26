@@ -26,7 +26,6 @@ namespace mod_booking\placeholders\placeholders;
 
 use mod_booking\placeholders\placeholders_info;
 use mod_booking\singleton_service;
-use moodle_exception;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -50,6 +49,7 @@ class customfields {
      * @param string $text
      * @param array $params
      * @param string $placeholder
+     * @param bool $fieldexists
      * @return string
      */
     public static function return_value(
@@ -58,7 +58,8 @@ class customfields {
         int $userid = 0,
         string &$text = '',
         array &$params = [],
-        string $placeholder = '') {
+        string $placeholder = '',
+        bool &$fieldexists = true) {
 
         global $CFG;
 
@@ -88,6 +89,8 @@ class customfields {
             }
             if (isset($user->profile[$placeholder])) {
                 $value = $user->profile[$placeholder];
+            } else {
+                $fieldexists = false;
             }
         }
 
@@ -101,5 +104,15 @@ class customfields {
     public static function return_placeholder_text() {
 
         return get_string('customfieldsplaceholdertext', 'mod_booking');
+    }
+
+    /**
+     * Function determine if placeholder class should be called at all.
+     *
+     * @return bool
+     *
+     */
+    public static function is_applicable(): bool {
+        return true;
     }
 }

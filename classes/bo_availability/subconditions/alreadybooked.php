@@ -51,6 +51,16 @@ class alreadybooked implements bo_subcondition {
     public $id = MOD_BOOKING_BO_COND_ALREADYBOOKED;
 
     /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
+
+    /**
      * Needed to see if class can take JSON.
      * @return bool
      */
@@ -133,7 +143,7 @@ class alreadybooked implements bo_subcondition {
 
         $isavailable = $this->is_available($settings, $subbookingid, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string($isavailable, $full, $settings);
 
         return [$isavailable, $description, MOD_BOOKING_BO_PREPAGE_NONE, MOD_BOOKING_BO_BUTTON_JUSTMYALERT];
     }
@@ -172,7 +182,7 @@ class alreadybooked implements bo_subcondition {
         if ($userid === null) {
             $userid = $USER->id;
         }
-        $label = $this->get_description_string(false, $full);
+        $label = $this->get_description_string(false, $full, $settings);
 
         $data = [
             'itemid' => $settings->id,
@@ -198,15 +208,16 @@ class alreadybooked implements bo_subcondition {
      *
      * @param bool $isavailable
      * @param bool $full
+     * @param booking_option_settings $settings
      * @return string
      */
-    private function get_description_string($isavailable, $full) {
+    private function get_description_string($isavailable, $full, $settings) {
         if ($isavailable) {
-            $description = $full ? get_string('bo_cond_alreadybooked_full_available', 'mod_booking') :
-                get_string('bo_cond_alreadybooked_available', 'mod_booking');
+            $description = $full ? get_string('bocondalreadybookedfullavailable', 'mod_booking') :
+                get_string('bocondalreadybookedavailable', 'mod_booking');
         } else {
-            $description = $full ? get_string('bo_cond_alreadybooked_full_not_available', 'mod_booking') :
-                get_string('bo_cond_alreadybooked_not_available', 'mod_booking');
+            $description = $full ? get_string('bocondalreadybookedfullnotavailable', 'mod_booking') :
+                get_string('bocondalreadybookednotavailable', 'mod_booking');
         }
         return $description;
     }

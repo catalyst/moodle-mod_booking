@@ -37,20 +37,6 @@ use moodle_exception;
 use MoodleQuickForm;
 use stdClass;
 
-// The blocking condition can return a value to define which button to use.
-define('MOD_BOOKING_BO_BUTTON_INDIFFERENT', 0);
-define('MOD_BOOKING_BO_BUTTON_MYBUTTON', 1); // Used for price or book it.
-define('MOD_BOOKING_BO_BUTTON_NOBUTTON', 2); // Forces no button (Eg special subbookings).
-define('MOD_BOOKING_BO_BUTTON_MYALERT', 3); // Alert is a weaker form of MYBUTTON. With special rights, Button is still shown.
-define('MOD_BOOKING_BO_BUTTON_JUSTMYALERT', 4); // A strong Alert which also prevents buttons to be displayed.
-
-// Define if there are sites and if so, if they are prepend, postpend or booking relevant.
-define('MOD_BOOKING_BO_PREPAGE_NONE', 0); // This condition provides no page.
-define('MOD_BOOKING_BO_PREPAGE_BOOK', 1); // This condition does only provide a booking page (button or price).
-                              // It's only used when there are other pages as well.
-define('MOD_BOOKING_BO_PREPAGE_PREBOOK', 2); // This should be before the bookit button.
-define('MOD_BOOKING_BO_PREPAGE_POSTBOOK', 3); // This should be after the bookit button.
-
 /**
  * class for conditional availability information of a booking option
  *
@@ -107,11 +93,11 @@ class bo_subinfo {
      * This function displays debugging() messages if the availability
      * information is invalid.
      *
-     * @param int $optionid
+     * @param ?int $optionid
      * @param int $userid If set, specifies a different user ID to check availability for
      * @return array [isavailable, description]
      */
-    public function is_available(int $optionid = null, int $userid = 0): array {
+    public function is_available(?int $optionid = null, int $userid = 0): array {
 
         if (!$optionid) {
             $optionid = $this->optionid;
@@ -208,11 +194,11 @@ class bo_subinfo {
      * This function displays debugging() messages if the availability
      * information is invalid.
      *
-     * @param \course_modinfo $modinfo Usually leave as null for default
+     * @param ?\course_modinfo $modinfo Usually leave as null for default
      * @return string Information string (for admin) about all restrictions on
      *   this item
      */
-    public function get_full_information(\course_modinfo $modinfo = null) {
+    public function get_full_information(?\course_modinfo $modinfo = null) {
         // Do nothing if there are no availability restrictions.
         if (is_null($this->availability)) {
             return '';
@@ -354,7 +340,11 @@ class bo_subinfo {
         }
 
         // We get the condition for the right page.
-        $condition = new $condition();
+        if (method_exists($condition, 'instance')) {
+            $condition = $condition::instance();
+        } else {
+            $condition = new $condition();
+        }
 
         // The condition renders the page we actually need.
         return $condition->render_page($optionid);
@@ -368,9 +358,9 @@ class bo_subinfo {
      * @param string $style any bootstrap style like 'success', 'danger' or 'warning'
      * @param int $optionid option id
      * @param bool $showprice true if price should be shown
-     * @param stdClass $optionvalues object containing option data to render col_price
+     * @param ?stdClass $optionvalues object containing option data to render col_price
      * @param bool $shownotificationlist true for symbol to subscribe to notification list
-     * @param stdClass $usertobuyfor user to buy for
+     * @param ?stdClass $usertobuyfor user to buy for
      * @param bool $modalfordescription
      */
     public static function render_conditionmessage(
@@ -378,9 +368,9 @@ class bo_subinfo {
             string $style = 'warning',
             int $optionid = 0,
             bool $showprice = false,
-            stdClass $optionvalues = null,
+            ?stdClass $optionvalues = null,
             bool $shownotificationlist = false,
-            stdClass $usertobuyfor = null,
+            ?stdClass $usertobuyfor = null,
             bool $modalfordescription = false) {
 
         global $PAGE;

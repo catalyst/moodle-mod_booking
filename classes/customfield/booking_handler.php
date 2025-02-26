@@ -31,6 +31,7 @@ use mod_booking\utils\wb_payment;
 use moodle_url;
 use context_system;
 use stdClass;
+use Throwable;
 
 /**
  * Handler for booking custom fields.
@@ -81,6 +82,27 @@ class booking_handler extends \core_customfield\handler {
         }
 
         static::$singleton = null;
+    }
+
+    /**
+     * Returns the customfields of the mod_booking component.
+     *
+     * @return array
+     *
+     */
+    public static function get_customfields(): array {
+        global $DB;
+
+        $sql = "SELECT cff.id, cff.name, cff.shortname, cff.configdata
+        FROM {customfield_field} cff
+        LEFT JOIN {customfield_category} cfc
+        ON cff.categoryid = cfc.id
+        WHERE cfc.component = 'mod_booking'
+        ORDER BY cfc.sortorder, cff.sortorder";
+
+        $records = $DB->get_records_sql($sql);
+
+        return $records;
     }
 
     /**
@@ -151,12 +173,19 @@ class booking_handler extends \core_customfield\handler {
      * @param string|null $headerlangidentifier
      * @param string|null $headerlangcomponent
      * @param int $contextid
+     * @param array $fieldstoinstanciate
      *
      * @return void
      *
      */
-    public function instance_form_definition(\MoodleQuickForm $mform, int $instanceid = 0,
-    ?string $headerlangidentifier = null, ?string $headerlangcomponent = null, $contextid = 0) {
+    public function instance_form_definition(
+        \MoodleQuickForm $mform,
+        int $instanceid = 0,
+        ?string $headerlangidentifier = null,
+        ?string $headerlangcomponent = null,
+        int $contextid = 0,
+        array $fieldstoinstanciate = []
+        ) {
 
         global $DB;
 
@@ -168,9 +197,11 @@ class booking_handler extends \core_customfield\handler {
 
         foreach ($fieldswithdata as $data) {
 
-            if (in_array($data->get_field()->get('shortname'), $uncheckedcustomfields)) {
+            if (in_array($data->get_field()->get('shortname'), $uncheckedcustomfields)
+                || (!empty($fieldstoinstanciate) && !in_array($data->get_field()->get('shortname'), $fieldstoinstanciate))) {
                 continue;
             }
+
             $categoryid = $data->get_field()->get_category()->get('id');
 
             if ($categoryid != $lastcategoryid) {
@@ -250,7 +281,7 @@ class booking_handler extends \core_customfield\handler {
         } else if ($PAGE->context && $PAGE->context instanceof \context_coursecat) {
             return $PAGE->context;
         }
-        return \context_system::instance();
+        return context_system::instance();
     }
 
     /**
@@ -259,16 +290,16 @@ class booking_handler extends \core_customfield\handler {
      * @return \context the context for configuration
      */
     public function get_configuration_context(): \context {
-        return \context_system::instance();
+        return context_system::instance();
     }
 
     /**
      * URL for configuration of the fields on this handler.
      *
-     * @return \moodle_url The URL to configure custom fields for this component
+     * @return moodle_url The URL to configure custom fields for this component
      */
-    public function get_configuration_url(): \moodle_url {
-        return new \moodle_url('/mod/booking/customfield.php');
+    public function get_configuration_url(): moodle_url {
+        return new moodle_url('/mod/booking/customfield.php');
     }
 
     /**
@@ -278,7 +309,7 @@ class booking_handler extends \core_customfield\handler {
      * @return \context the context for the given record
      */
     public function get_instance_context(int $instanceid = 0): \context {
-            return \context_system::instance();
+            return context_system::instance();
     }
 
     /**
@@ -326,32 +357,7 @@ class booking_handler extends \core_customfield\handler {
 
         $errors = parent::instance_form_validation($data, $files);
 
-        // First, we check, if user chose to automatically create a new moodle course.
-        if (isset($data['courseid']) && $data['courseid'] == -1) {
-            if (wb_payment::pro_version_is_activated()) {
-                // URLs needed for error message.
-                $bookingcustomfieldsurl = new moodle_url('/mod/booking/customfield.php');
-                $settingsurl = new moodle_url('/admin/settings.php', ['section' => 'modsettingbooking']);
-                $a = new stdClass;
-                $a->bookingcustomfieldsurl = $bookingcustomfieldsurl->out(false);
-                $a->settingsurl = $settingsurl->out(false);
-
-                if (empty(get_config('booking', 'newcoursecategorycfield'))) {
-                    $errors['courseid'] = get_string('error:newcoursecategorycfieldmissing', 'mod_booking', $a);
-                } else {
-                    // A custom field for the category for automatically created new Moodle courses has been set.
-                    $newcoursecategorycfield = get_config('booking', 'newcoursecategorycfield');
-
-                    // So now we need to check, if a value for that custom field was set to in option form.
-                    if (empty($data["customfield_$newcoursecategorycfield"])) {
-                        $errors["customfield_$newcoursecategorycfield"] =
-                            get_string('error:coursecategoryvaluemissing', 'mod_booking');
-                    }
-                }
-            } else {
-                $errors['courseid'] = get_string('infotext:prolicensenecessary', 'mod_booking');
-            }
-        }
+        // Currently nothing to validate.
 
         return $errors;
     }
@@ -422,8 +428,11 @@ class booking_handler extends \core_customfield\handler {
                 $values = explode(',', $instance->{$key});
                 $instance->{$key} = $values;
             }
-
-            $data->instance_form_save($instance);
+            try {
+                $data->instance_form_save($instance);
+            } catch (Throwable $e) {
+                $donothing = true;
+            }
 
             $elementname = $data->get_form_element_name();
         }

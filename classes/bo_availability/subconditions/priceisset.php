@@ -53,6 +53,16 @@ class priceisset implements bo_subcondition {
     public $id = MOD_BOOKING_BO_COND_PRICEISSET;
 
     /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
+
+    /**
      * Needed to see if class can take JSON.
      * @return bool
      */
@@ -83,7 +93,7 @@ class priceisset implements bo_subcondition {
         $isavailable = false;
 
         // Only if there is no price on the option, we can return true.
-        $priceitems = price::get_prices_from_cache_or_db('option', $settings->id);
+        $priceitems = price::get_prices_from_cache_or_db('option', $settings->id, $userid);
 
         if (empty($settings->jsonobject->useprice)) {
 
@@ -191,11 +201,11 @@ class priceisset implements bo_subcondition {
      */
     private function get_description_string($isavailable, $full) {
         if ($isavailable) {
-            $description = $full ? get_string('bo_cond_priceisset_full_available', 'mod_booking') :
-                get_string('bo_cond_priceisset_available', 'mod_booking');
+            $description = $full ? get_string('bocondpriceissetfullavailable', 'mod_booking') :
+                get_string('bocondpriceissetavailable', 'mod_booking');
         } else {
-            $description = $full ? get_string('bo_cond_priceisset_full_not_available', 'mod_booking') :
-                get_string('bo_cond_priceisset_not_available', 'mod_booking');
+            $description = $full ? get_string('bocondpriceissetfullnotavailable', 'mod_booking') :
+                get_string('bocondpriceissetnotavailable', 'mod_booking');
         }
         return $description;
     }

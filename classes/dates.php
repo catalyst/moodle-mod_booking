@@ -30,7 +30,6 @@ namespace mod_booking;
 
 use coding_exception;
 use DateTime;
-use DateTimeZone;
 use local_entities\entitiesrelation_handler;
 use mod_booking\customfield\optiondate_cfields;
 use mod_booking\option\dates_handler;
@@ -51,13 +50,11 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class dates {
-
     /**
      * Construct dates class
      *
      */
     public function __construct() {
-
     }
 
     /**
@@ -74,12 +71,9 @@ class dates {
         $defaultvalues = $mform->_defaultValues;
 
         // Here we take a look in all the transmitted information and sort out how many dates we will have.
-        list($dates, $highestidx) = self::get_list_of_submitted_dates($defaultvalues);
+        [$dates, $highestidx] = self::get_list_of_submitted_dates($defaultvalues);
 
         // Datesection for Dynamic Load.
-        $datesicon = '<i class="fa fa-fw fa-calendar" aria-hidden="true"></i>&nbsp;';
-        $elements[] = $mform->addElement('header', 'datesheader', $datesicon . get_string('dates', 'mod_booking'));
-
         // By default, we collapse.
         if (!$keys = preg_grep('/^mform_isexpanded_id_datesheader_/', array_keys($formdata))) {
             $mform->setExpanded('datesheader', false);
@@ -99,7 +93,6 @@ class dates {
         // We check if there are semsters at all...
         // ... and if on this particular instance a semesterid is set.
         if ((count($semestersarray) >= 1) && !empty($bookingsettings->semesterid)) {
-
             $semesterid = null;
             $dayofweektime = '';
             if ($bookingoptionsettings) {
@@ -107,8 +100,9 @@ class dates {
                 $semesterid = $formdata['semesterid'] ?? $bookingoptionsettings->semesterid;
                 $dayofweektime = $formdata['dayofweektime'] ?? $bookingoptionsettings->dayofweektime;
             }
-            // Get semester from bookingsetting if still empty.
-            if (empty($semesterid)) {
+            // Get semester from bookingsetting if it's still NULL.
+            // But if it's 0, we keep it 0 because this might be intended!
+            if (is_null($semesterid)) {
                 $semesterid = $bookingsettings->semesterid;
             }
 
@@ -122,26 +116,30 @@ class dates {
                 'semesterid',
                 get_string('chooseperiod', 'mod_booking'),
                 $semestersarray,
-                $semesteridoptions);
-
+                $semesteridoptions
+            );
             $mform->addHelpButton('semesterid', 'chooseperiod', 'mod_booking');
             $mform->setType('semesterid', PARAM_INT);
             $element->setValue($semesterid);
+            $mform->hideIf('semesterid', 'selflearningcourse', 'eq', 1);
             $elements[] = $element;
 
             $element = $mform->addElement('text', 'dayofweektime', get_string('reoccurringdatestring', 'mod_booking'));
             $mform->addHelpButton('dayofweektime', 'reoccurringdatestring', 'mod_booking');
             $mform->setType('dayofweektime', PARAM_TEXT);
             $element->setValue($dayofweektime);
+            $mform->hideIf('dayofweektime', 'selflearningcourse', 'eq', 1);
             $elements[] = $element;
 
             // Button to attach JavaScript to reload the form.
             $mform->registerNoSubmitButton('addoptiondateseries');
-            $elements[] = $mform->addElement('submit', 'addoptiondateseries', get_string('add_optiondate_series', 'mod_booking'),
-                [
-                'data-action' => 'addoptiondateseries',
-            ]);
-
+            $elements[] = $mform->addElement(
+                'submit',
+                'addoptiondateseries',
+                get_string('addoptiondateseries', 'mod_booking'),
+                ['data-action' => 'addoptiondateseries']
+            );
+            $mform->hideIf('addoptiondateseries', 'selflearningcourse', 'eq', 1);
         }
 
         $datescounter = $defaultvalues["datescounter"] ?? 0;
@@ -157,6 +155,7 @@ class dates {
         $elements[] = $element;
 
         $now = time();
+        $nextfullhour = strtotime(date('Y-m-d H:00:00', $now)) + 3600;
 
         // If we want to show more dates than we currently have...
         // ... we add them here.
@@ -164,8 +163,8 @@ class dates {
             $highestidx++;
             $dates[] = [
                 'index' => $highestidx,
-                'coursestarttime' => $now,
-                'courseendtime' => $now + 3600, // Default: 1 hour after start.
+                'coursestarttime' => $nextfullhour,
+                'courseendtime' => $nextfullhour + 3600, // Default: 1 hour after start.
                 'daystonotify' => 0,
             ];
         }
@@ -174,7 +173,7 @@ class dates {
         // Before we add the other forms, we need to add the nosubmit in case of we just deleted an optiondate.
         $datestodelete = preg_grep($regexkey, array_keys((array)$defaultvalues));
         foreach ($datestodelete as $name) {
-            list($name, $idx) = explode('_', $name);
+            [$name, $idx] = explode('_', $name);
             $mform->registerNoSubmitButton(MOD_BOOKING_FORM_DELETEDATE . $idx);
         }
 
@@ -185,7 +184,6 @@ class dates {
         }
 
         self::move_form_elements_to_the_right_place($mform, $elements);
-
     }
 
     /**
@@ -204,27 +202,31 @@ class dates {
         $sessions = [];
 
         if (empty($defaultvalues->dayofweektime)) {
-
             if (
                 (!empty($defaultvalues->starttime) && !empty($defaultvalues->endtime))
                 || (!empty($defaultvalues->coursestarttime) && !empty($defaultvalues->courseendtime))
-                || (!empty($defaultvalues->startdate) && !empty($defaultvalues->enddate))) {
-
+                || (!empty($defaultvalues->startdate) && !empty($defaultvalues->enddate))
+                || (!empty($defaultvalues->coursestartdate) && !empty($defaultvalues->courseenddate))
+            ) {
                 // If there is no dayofweektime, we might have a single coursestartdate and courseeneddate.
-                $starttime = $defaultvalues->starttime ?? $defaultvalues->startdate ?? $defaultvalues->coursestarttime;
-                $endtime = $defaultvalues->endtime ?? $defaultvalues->enddate ?? $defaultvalues->courseendtime;
+                $starttime = $defaultvalues->starttime
+                    ?? $defaultvalues->startdate
+                    ?? $defaultvalues->coursestarttime
+                    ?? $defaultvalues->coursestartdate;
+                $endtime = $defaultvalues->endtime
+                    ?? $defaultvalues->enddate
+                    ?? $defaultvalues->courseendtime
+                    ?? $defaultvalues->courseenddate;
 
                 $defaultvalues->{MOD_BOOKING_FORM_OPTIONDATEID . 0} = 0;
                 $defaultvalues->{MOD_BOOKING_FORM_COURSESTARTTIME . 0} = strtotime($starttime);
                 $defaultvalues->{MOD_BOOKING_FORM_COURSEENDTIME . 0} = strtotime($endtime);
                 $defaultvalues->{MOD_BOOKING_FORM_DAYSTONOTIFY . 0} = 0;
-
             }
         }
 
         // If we have clicked on the create option date series, we recreate all option dates.
         if (isset($defaultvalues->addoptiondateseries)) {
-
             // When creating new date series, we unset defaults for all customfields.
             $regexkey = '/^' . MOD_BOOKING_FORM_OPTIONDATEID . '/';
             $optiondates = preg_grep($regexkey, array_keys((array)$defaultvalues));
@@ -258,27 +260,40 @@ class dates {
             // Also make sure, we delete all previous calendar events.
             // Delete course events for the optiondate.
             // Optionid and optiondateid are stored in uuid column like this: optionid-optiondateid.
-            $DB->delete_records_select('event',
+            $DB->delete_records_select(
+                'event',
                 "eventtype = 'course'
                 AND courseid <> 0
                 AND component = 'mod_booking'
                 AND uuid LIKE :pattern",
                 ['pattern' => "{$defaultvalues->id}-%"]
             );
-
         } else if (!empty($defaultvalues->id)) {
             $settings = singleton_service::get_instance_of_booking_option_settings($defaultvalues->id);
-            $sessions = $settings->sessions;
+            // Make sure, no sessions are created for self-learning courses.
+            if (empty($settings->selflearningcourse)) {
+                $sessions = $settings->sessions;
+            } else {
+                $sessions = [];
+            }
             $defaultvalues->datescounter = $datescounter;
         }
 
         // This Logic is linked to the webservice importer functionality.
         // We might need to add coursestartime and courseendtime as new session.
-        if (!empty($defaultvalues->importing)
-            && !empty($defaultvalues->mergeparam)
-            && !empty($sessions)) {
+        if (
+            !empty($defaultvalues->importing)
+            && isset($defaultvalues->mergeparam)
+            && !empty($sessions)
+        ) {
+            // If we are importing, we need to set back existing sessions, so we can avoid duplication.
+            if (
+                $defaultvalues->mergeparam <= 1
+            ) {
+                // If Param is 0 or 1, we will only have one session.
+                $sessions = [];
+            }
 
-            // If we add another session, we need to add it to the sessions object.
             if ($defaultvalues->mergeparam == 2) {
                 // If we are importing via webservice and have already sessions in this option...
                 // ... and we have already added new coursestarttime and courseendtime, we move them.
@@ -288,6 +303,7 @@ class dates {
                     'courseendtime' => $defaultvalues->{MOD_BOOKING_FORM_COURSEENDTIME . 0},
                     'daystonotify' => 0,
                 ];
+
                 unset($defaultvalues->{MOD_BOOKING_FORM_OPTIONDATEID . 0});
                 unset($defaultvalues->{MOD_BOOKING_FORM_COURSESTARTTIME . 0});
                 unset($defaultvalues->{MOD_BOOKING_FORM_COURSEENDTIME . 0});
@@ -316,7 +332,6 @@ class dates {
             $datescounter++;
 
             if (class_exists('local_entities\entitiesrelation_handler')) {
-
                 $erhandler = new entitiesrelation_handler('mod_booking', 'optiondate');
 
                 // Set entity from booking option as default for entity of new optiondate.
@@ -325,7 +340,6 @@ class dates {
 
             $defaultvalues->datescounter = $datescounter;
         } else {
-
             // We might have clicked a delete nosubmit button.
 
             $regexkey = '/^' . MOD_BOOKING_FORM_DELETEDATE . '/';
@@ -336,7 +350,7 @@ class dates {
                 $datescounter--;
                 $defaultvalues->datescounter = $datescounter;
                 // We also need to delete the precise data.
-                list($name, $idx) = explode('_', $name);
+                [$name, $idx] = explode('_', $name);
 
                 unset($defaultvalues->{MOD_BOOKING_FORM_OPTIONDATEID . $idx});
                 unset($defaultvalues->{MOD_BOOKING_FORM_COURSESTARTTIME . $idx});
@@ -348,13 +362,13 @@ class dates {
         // If we load the form the first time datesmarker is not yet set.
         // Or if the create series is called.
         // Then we have to load the elements from the form.
-        if (!isset($defaultvalues->datesmarker)
-            || isset($defaultvalues->addoptiondateseries)) {
-
+        if (
+            !isset($defaultvalues->datesmarker)
+            || isset($defaultvalues->addoptiondateseries)
+        ) {
             $idx = 0;
 
             foreach ($sessions as $session) {
-
                 // We might have entity relations for every session.
 
                 $idx++;
@@ -369,16 +383,19 @@ class dates {
 
                 // We might need to delete entities relation.
                 if (class_exists('local_entities\entitiesrelation_handler')) {
-
                     $erhandler = new entitiesrelation_handler('mod_booking', 'optiondate');
+
+                    // By default, we use the same entity as the main entity.
+                    // This is helpful, when we recreate optiondate series for example.
+                    $key = LOCAL_ENTITIES_FORM_ENTITYID . 0;
+                    $entityid = $defaultvalues->{$key} ?? 0;
 
                     // If we fetch sessions from DB, we also have to load entities from DB.
                     if (empty($defaultvalues->addoptiondateseries) && !empty($session->optiondateid)) {
-                        $entityid = $erhandler->get_entityid_by_instanceid($session->optiondateid) ?? 0;
-                    } else {
-                        // Else we recreate optiondate series, so use the main entity of the option.
-                        $key = LOCAL_ENTITIES_FORM_ENTITYID . 0;
-                        $entityid = $defaultvalues->{$key} ?? 0;
+                        $existingentityidofoptiondate = $erhandler->get_entityid_by_instanceid($session->optiondateid);
+                        if (!empty($existingentityidofoptiondate)) {
+                            $entityid = $existingentityidofoptiondate;
+                        }
                     }
 
                     $key = LOCAL_ENTITIES_FORM_ENTITYID . $idx;
@@ -408,7 +425,6 @@ class dates {
      *
      */
     public static function data_preprocessing($defaultvalues) {
-
     }
 
     /**
@@ -425,14 +441,30 @@ class dates {
 
         if (!$optiondates = preg_grep('/^optiondateid_/', array_keys($formvalues))) {
             // For performance.
-            return [[], 0];
+
+            // There might be one more way data is submitted.
+            if (!empty($formvalues["coursestarttime"]) && !empty($formvalues["courseendtime"])) {
+                $dates[] = [
+                    'id' => 0,
+                    'index' => 0,
+                    'optiondateid' => 0,
+                    'coursestarttime' => $formvalues["coursestarttime"],
+                    'courseendtime' => $formvalues["courseendtime"],
+                    'daystonotify' => 0,
+                    'entityid' => 0,
+                    'entityarea' => 0,
+                    'customfields' => [],
+                ];
+                $highesindex = 0;
+            } else {
+                return [[], 0];
+            }
         }
 
         foreach ($optiondates as $optiondate) {
-            list($a, $counter) = explode('_', $optiondate);
+            [$a, $counter] = explode('_', $optiondate);
 
             if (isset($formvalues[MOD_BOOKING_FORM_OPTIONDATEID . $counter])) {
-
                 if (is_array($formvalues[MOD_BOOKING_FORM_COURSESTARTTIME . $counter])) {
                     $coursestarttimearr = $formvalues[MOD_BOOKING_FORM_COURSESTARTTIME . $counter];
                     $courseendtimearr = $formvalues[MOD_BOOKING_FORM_COURSEENDTIME . $counter];
@@ -501,24 +533,25 @@ class dates {
      *
      * @param stdClass $formdata
      * @param stdClass $option
-     * @return void
+     * @return array // Array of changes.
      */
-    public static function save_optiondates_from_form(stdClass $formdata, stdClass &$option) {
+    public static function save_optiondates_from_form(stdClass $formdata, stdClass &$option): array {
 
         $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
-        list($newoptiondates, $highesindex) = self::get_list_of_submitted_dates((array)$formdata);
+        [$newoptiondates, $highesindex] = self::get_list_of_submitted_dates((array)$formdata);
         $olddates = $settings->sessions;
+        // For the moment we don't save entities in old (to be deleted) dates since it's not considered as an important information.
+        $memory = $olddates;
 
         $datestosave = [];
         $datestodelete = [];
         $datestoupdate = [];
-
+        $newvalues = [];
+        // Olddates don't contain location yet.
         foreach ($newoptiondates as $optiondate) {
-
             if (empty($optiondate['optiondateid'])) {
                 $datestosave[] = $optiondate;
             } else if (isset($olddates[$optiondate['optiondateid']])) {
-
                 $oldoptiondate = $olddates[$optiondate['optiondateid']];
                 $oldoptiondate->customfields = optiondate_cfields::return_customfields_for_optiondate($optiondate['optiondateid']);
 
@@ -527,9 +560,10 @@ class dates {
                 if (!optiondate::compare_optiondates((array)$oldoptiondate, $optiondate)) {
                     // If one of the dates is not exactly the same, we need to delete the current option and add a new one.
                     $datestoupdate[] = $optiondate;
+                } else {
+                    $newvalues[] = $optiondate;
                 }
-                unset($olddates[$oldoptiondate->id]);
-
+                unset($olddates[$oldoptiondate->id]); // Olddates is unset here but we still need it!
             } else {
                 // This would be sign of an error, sth went wrong.
                 throw new moodle_exception('savingoptiondatewentwrong', 'mod_booking');
@@ -537,21 +571,28 @@ class dates {
         }
 
         $datestodelete = array_merge($olddates, $datestodelete);
+        if (class_exists('local_entities\entitiesrelation_handler')) {
+            $handler = new entitiesrelation_handler('mod_booking', 'optiondate');
+        }
 
         foreach ($datestodelete as $date) {
             $date = (array)$date;
 
             if (!empty($date['optiondateid'])) {
-
                 optiondate::delete($date['optiondateid']);
-
+                // For tracking of changes, store infos about old optiondates including entities.
+                if (
+                    isset($date['optiondateid']) && isset($handler) &&
+                    $data = $handler->get_instance_data($date['optiondateid'])
+                ) {
+                    $date['entityid'] = $data->id ?? 0;
+                    $date['entityarea'] = $data->area ?? '';
+                }
             }
         }
 
         // Saving and updating uses the same routines anyway.
-
         $datestosave = array_merge($datestosave, $datestoupdate);
-
         foreach ($datestosave as $date) {
             $optiondate = optiondate::save(
                 (int)$date['optiondateid'] ?? 0,
@@ -564,8 +605,36 @@ class dates {
                 '',
                 0,
                 (int)$date['entityid'] ?? 0,
-                $date['customfields'] ?? []);
+                $date['customfields'] ?? []
+            );
         }
+
+        if (empty($datestoupdate) && empty($datestodelete)) {
+            $memory = [];
+        } else {
+            $memory = array_values($memory);
+        }
+        // Checking for changes.
+        if (
+            (empty($memory) && empty($datestosave))
+            || in_array('dates', MOD_BOOKING_CLASSES_EXCLUDED_FROM_CHANGES_TRACKING)
+        ) {
+            return [];
+        }
+
+        if (!empty($formdata->selflearningcourse)) {
+            return [];
+        }
+
+        $newvalue = array_merge($newvalues, $datestosave);
+        $changes = [
+            'changes' => [
+                'fieldname' => 'dates',
+                'oldvalue' => $memory,
+                'newvalue' => $newvalue,
+            ],
+        ];
+        return $changes;
     }
 
     /**
@@ -582,7 +651,8 @@ class dates {
         MoodleQuickForm &$mform,
         array &$elements,
         array $date,
-        bool $expanded = false) {
+        bool $expanded = false
+    ) {
 
         global $OUTPUT;
 
@@ -616,29 +686,38 @@ class dates {
         $mform->addElement($element);
         $elements[] = $element;
 
-        $element = $mform->addElement('date_time_selector', MOD_BOOKING_FORM_COURSESTARTTIME . $idx,
-            get_string("coursestarttime", "booking"));
+        $element = $mform->addElement(
+            'date_time_selector',
+            MOD_BOOKING_FORM_COURSESTARTTIME . $idx,
+            get_string("coursestarttime", "booking")
+        );
         $mform->setType(MOD_BOOKING_FORM_COURSESTARTTIME . $idx, PARAM_INT);
         $time = self::timestamp_to_array($starttime);
         $element->setValue($time);
         $elements[] = $element;
 
-        $element = $mform->addElement('date_time_selector', MOD_BOOKING_FORM_COURSEENDTIME . $idx,
-            get_string("courseendtime", "booking"));
+        $element = $mform->addElement(
+            'date_time_selector',
+            MOD_BOOKING_FORM_COURSEENDTIME . $idx,
+            get_string("courseendtime", "booking")
+        );
         $mform->setType(MOD_BOOKING_FORM_COURSEENDTIME . $idx, PARAM_INT);
         $time = self::timestamp_to_array($endtime);
         $element->setValue($time);
         $elements[] = $element;
 
-        $element = $mform->addElement(
-            'text',
-            MOD_BOOKING_FORM_DAYSTONOTIFY . $idx,
-            get_string('daystonotifysession', 'mod_booking'));
+        if (!empty(get_config('booking', 'uselegacymailtemplates'))) {
+            $element = $mform->addElement(
+                'text',
+                MOD_BOOKING_FORM_DAYSTONOTIFY . $idx,
+                get_string('daystonotifysession', 'mod_booking')
+            );
 
-        $mform->setType(MOD_BOOKING_FORM_DAYSTONOTIFY . $idx, PARAM_INT);
-        $element->setValue($date['daystonotify']);
-        $mform->addHelpButton(MOD_BOOKING_FORM_DAYSTONOTIFY . $idx, 'daystonotifysession', 'mod_booking');
-        $elements[] = $element;
+            $mform->setType(MOD_BOOKING_FORM_DAYSTONOTIFY . $idx, PARAM_INT);
+            $element->setValue($date['daystonotify']);
+            $mform->addHelpButton(MOD_BOOKING_FORM_DAYSTONOTIFY . $idx, 'daystonotifysession', 'mod_booking');
+            $elements[] = $element;
+        }
 
         // Add entities.
         if (class_exists('local_entities\entitiesrelation_handler')) {
@@ -661,7 +740,6 @@ class dates {
         $element->setName('header_accordion_end_optiondate_' . $idx);
         $mform->addElement($element);
         $elements[] = $element;
-
     }
 
     /**
@@ -672,7 +750,6 @@ class dates {
      */
     private static function move_form_elements_to_the_right_place(MoodleQuickForm &$mform, array $elements) {
         foreach ($elements as $formelement) {
-
             $name = $formelement->getName();
             $value = $formelement->getValue();
 
@@ -703,29 +780,32 @@ class dates {
         $defaultvalues = $mform->_defaultValues;
 
         foreach ($dates as $key => $date) {
-
             $idx = $date['index'];
 
             $elements[] = $mform->addElement('hidden', MOD_BOOKING_FORM_OPTIONDATEID . $idx, 0);
             $mform->setType(MOD_BOOKING_FORM_OPTIONDATEID . $idx, PARAM_INT);
 
             // If we are on the last element and we just clicked "add", we print the form.
-            if ((isset($defaultvalues['adddatebutton'])
+            if (
+                (isset($defaultvalues['adddatebutton'])
                 && (array_key_last($dates) == $key)
-                && !$editted)) {
+                && !$editted)
+            ) {
                 $editted = true;
             }
 
             self::add_date_as_collapsible($mform, $elements, $date, $editted);
-
         }
 
         // Button to attach JavaScript to reload the form.
         $mform->registerNoSubmitButton('adddatebutton');
-        $elements[] = $mform->addElement('submit', 'adddatebutton', get_string('adddatebutton', 'mod_booking'),
-            [
-            'data-action' => 'adddatebutton',
-        ]);
+        $elements[] = $mform->addElement(
+            'submit',
+            'adddatebutton',
+            get_string('adddatebutton', 'mod_booking'),
+            ['data-action' => 'adddatebutton']
+        );
+        $mform->hideIf('adddatebutton', 'selflearningcourse', 'eq', 1);
     }
 
     /**
@@ -741,7 +821,8 @@ class dates {
      */
     private static function add_no_dates_yet_to_form(MoodleQuickForm &$mform, array &$elements, array $dates, array $formdata) {
 
-        $elements[] = $mform->addElement('static', 'nodatesmessage', '', get_string('nodateset', 'mod_booking'));
+        $elements[] = $mform->addElement('static', 'nodatesmessage', '', get_string('datenotset', 'mod_booking'));
+        $mform->hideIf('nodatesmessage', 'selflearningcourse', 'eq', 1);
 
         // After deleting, we still need to register the right no delete button.
         // The default values are those we have just set via set_data.
@@ -756,10 +837,13 @@ class dates {
 
         // Button to attach JavaScript to reload the form.
         $mform->registerNoSubmitButton('adddatebutton');
-        $elements[] = $mform->addElement('submit', 'adddatebutton', get_string('adddatebutton', 'mod_booking'),
-            [
-            'data-action' => 'adddatebutton',
-        ]);
+        $elements[] = $mform->addElement(
+            'submit',
+            'adddatebutton',
+            get_string('adddatebutton', 'mod_booking'),
+            ['data-action' => 'adddatebutton']
+        );
+        $mform->hideIf('adddatebutton', 'selflearningcourse', 'eq', 1);
     }
 
     /**

@@ -30,6 +30,13 @@
  */
 import DynamicForm from 'core_form/dynamicform';
 
+const SELECTORS = {
+    OPTIONDATELEMENT: '[name="optiondate-element"]',
+    DELETEOPTIONDATE: 'deleteoptiondate',
+    DELETEOPTIONDATEBUTTON: '[name^="deletedate_"]',
+    PAGE: '[id="page"]'
+};
+
 
 export const init = (cmid, id, optionid, bookingid, copyoptionid, returnurl) => {
     // Initialize the form - pass the container element and the form class name.
@@ -72,6 +79,22 @@ export const init = (cmid, id, optionid, bookingid, copyoptionid, returnurl) => 
             dynamicForm.load([cmid, id, optionid, bookingid, copyoptionid, returnurl]);
         }
     });
+    dynamicForm.addEventListener(dynamicForm.events.SERVER_VALIDATION_ERROR, () => {
+        showInvalidFeedback();
+        // eslint-disable-next-line no-console
+        console.log('validation error');
+    });
+
+    dynamicForm.addEventListener(dynamicForm.events.CLIENT_VALIDATION_ERROR, () => {
+        showInvalidFeedback();
+        // eslint-disable-next-line no-console
+        console.log('validation error');
+    });
+
+    var checkbox1 = document.querySelector('[name="restrictanswerperiodopening"]');
+    var checkbox2 = document.querySelector('[name="restrictanswerperiodclosing"]');
+    var conditionalCheckbox = document.querySelector('[name="bo_cond_booking_time_sqlfiltercheck"]');
+    let closest = conditionalCheckbox.closest('[class^="form-group row"],[class*=" fitem"]');
 
     dynamicForm.addEventListener('change', e => {
         // eslint-disable-next-line no-console
@@ -83,5 +106,115 @@ export const init = (cmid, id, optionid, bookingid, copyoptionid, returnurl) => 
             dynamicForm.processNoSubmitButton(button);
         }
 
+        if (e.target.name == 'restrictanswerperiodopening' || e.target.name == 'restrictanswerperiodclosing') {
+            hidecheckbox(checkbox1, checkbox2, closest, conditionalCheckbox, true);
+
+        }
     });
+    hidecheckbox(checkbox1, checkbox2, closest, conditionalCheckbox, false);
+
+
+    const page = document.querySelector(SELECTORS.PAGE);
+
+    if (page) {
+
+        page.addEventListener('click', e => {
+
+            const element = e.target;
+
+            // eslint-disable-next-line no-console
+            console.log('target', element);
+
+            if (element.classList.contains(SELECTORS.DELETEOPTIONDATE)) {
+
+                const container = element.closest(SELECTORS.OPTIONDATELEMENT);
+
+                // eslint-disable-next-line no-console
+                console.log('container', container, container.querySelector('.bg-white'));
+
+                if (container) {
+
+                    const card = container.querySelector('.bg-white');
+                    if (card) {
+
+                        // eslint-disable-next-line no-console
+                        console.log('card', card);
+
+                        card.classList.remove('bg-white');
+                        card.classList.add('bg-danger');
+                    }
+
+                    const deletebutton = container.querySelector(SELECTORS.DELETEOPTIONDATEBUTTON);
+                    if (deletebutton) {
+
+                        // eslint-disable-next-line no-console
+                        console.log('deletebutton', deletebutton);
+
+                        deletebutton.click();
+                    }
+                }
+            }
+        });
+    }
+
+    const optiondateelements = document.querySelectorAll(SELECTORS.OPTIONDATELEMENT);
+
+    // eslint-disable-next-line no-console
+    console.log(optiondateelements);
 };
+
+/**
+ * Hide the given checkbox.
+ * @param {mixed} checkbox1
+ * @param {mixed} checkbox2
+ * @param {mixed} closest
+ * @param {mixed} conditionalCheckbox
+ * @param {boolean} withelse
+ */
+function hidecheckbox(checkbox1, checkbox2, closest, conditionalCheckbox, withelse) {
+    if (closest === null) {
+        return;
+    }
+    if (!checkbox1.checked && !checkbox2.checked) {
+        conditionalCheckbox.value = "";
+        conditionalCheckbox.checked = false;
+        closest.style.display = "none";
+    } else if (withelse) {
+        closest.style.display = "";
+    }
+}
+
+/**
+ * Show invalide feedback. Go through closest elements and open them.
+ *
+ *
+ */
+function showInvalidFeedback() {
+
+    // Select all div elements with both 'form-control-feedback' and 'invalid-feedback' classes.
+    const elements = document.querySelectorAll('.invalid-feedback');
+    // Filter to keep only those that have non-empty content.
+    const nonEmptyElements = Array.from(elements).filter(element => element.textContent.trim() !== '');
+
+    // eslint-disable-next-line no-console
+    console.log(nonEmptyElements);
+
+    const container = document.querySelector('#editoptionsformcontainer');
+
+    nonEmptyElements.forEach((element) => {
+        let currentElement = element;
+
+        while (currentElement && currentElement !== container) {
+            currentElement = currentElement.parentElement;
+
+            if (currentElement && currentElement.classList.contains('collapse')) {
+                currentElement.classList.add('show');
+            }
+        }
+    });
+    let firstelement = nonEmptyElements[0];
+    firstelement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+    });
+}

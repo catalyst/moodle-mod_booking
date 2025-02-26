@@ -90,14 +90,14 @@ class easy_bookingclosingtime extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         $key = 'bookingclosingtime';
         $value = $formdata->{$key} ?? null;
@@ -112,7 +112,7 @@ class easy_bookingclosingtime extends field_base {
             }
         }
 
-        return '';
+        return [];
     }
 
     /**
@@ -132,13 +132,22 @@ class easy_bookingclosingtime extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
-        // The form is not locked and can be used normally.
-        $mform->addElement('hidden', 'restrictanswerperiodclosing');
+        $mform->addElement('advcheckbox', 'restrictanswerperiodclosing',
+                get_string('restrictanswerperiodopening', 'mod_booking'));
         $mform->setType('restrictanswerperiodclosing', PARAM_INT);
+        $mform->disabledIf('bookingclosingtime', 'restrictanswerperiodclosing', 'neq', "1");
 
         $mform->addElement('date_time_selector', 'bookingclosingtime',
             get_string('easyavailability:closingtime', 'local_musi'));
@@ -158,7 +167,7 @@ class easy_bookingclosingtime extends field_base {
             && !empty($settings->bookingclosingtime)) {
 
             $data->bookingclosingtime = $settings->bookingclosingtime;
+            $data->restrictanswerperiodclosing = 1;
         }
-        $data->restrictanswerperiodclosing = 1;
     }
 }

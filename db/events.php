@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-
 /**
  * Meta course enrolment plugin event handler definition.
  *
@@ -95,4 +94,10 @@ $observers = [
         'eventname' => '\core\event\course_completed',
         'callback' => 'mod_booking_observer::course_completed',
     ],
+    [
+        'eventname' => '\core\event\course_module_updated',
+        'callback' => 'mod_booking_observer::course_module_updated',
+    ],
+
+
 ];

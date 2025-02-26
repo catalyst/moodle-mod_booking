@@ -41,7 +41,6 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class subbooking_timeslot implements booking_subbooking {
-
     /** @var int $id Id of the configured subbooking */
     public $id = 0;
 
@@ -50,6 +49,9 @@ class subbooking_timeslot implements booking_subbooking {
 
     /** @var string $type type of subbooking as the name of this class */
     public $type = 'subbooking_timeslot';
+
+    /** @var string $typestringid localized string to display type of subbooking at various froms */
+    public $typestringid = 'subbookingtimeslot';
 
     /** @var string $name given name to this configured subbooking*/
     public $name = '';
@@ -63,7 +65,7 @@ class subbooking_timeslot implements booking_subbooking {
     /** @var int $duration This is a supplementary field which is not directly in the db but wrapped in the json */
     public $duration = 0;
 
-    /** @var int $duration This is a supplementary field which is not directly in the db but wrapped in the json */
+    /** @var string $description This is a supplementary field which is not directly in the db but wrapped in the json */
     public $description = '';
 
     /**
@@ -97,12 +99,19 @@ class subbooking_timeslot implements booking_subbooking {
      */
     public function add_subbooking_to_mform(MoodleQuickForm &$mform, &$formdata) {
 
-        $mform->addElement('static', 'subbooking_timeslot_desc', '',
-            get_string('subbooking_timeslot_desc', 'mod_booking'));
+        $mform->addElement(
+            'static',
+            'subbooking_timeslot_desc',
+            '',
+            get_string('subbookingtimeslot_desc', 'mod_booking')
+        );
 
         // Duration of one particular slot.
-        $mform->addElement('text', 'subbooking_timeslot_duration',
-            get_string('subbooking_duration', 'mod_booking'));
+        $mform->addElement(
+            'text',
+            'subbooking_timeslot_duration',
+            get_string('subbookingduration', 'mod_booking')
+        );
         $mform->setType('subbooking_timeslot_duration', PARAM_INT);
 
         // For price & entities wie need the id of this subbooking.
@@ -116,7 +125,6 @@ class subbooking_timeslot implements booking_subbooking {
             $erhandler = new entitiesrelation_handler('mod_booking', 'subbooking');
             $erhandler->instance_form_definition($mform, $sboid);
         }
-
     }
 
     /**
@@ -125,7 +133,7 @@ class subbooking_timeslot implements booking_subbooking {
      * @return string
      */
     public function get_name_of_subbooking($localized = true): string {
-        return $localized ? get_string($this->type, 'mod_booking') : $this->type;
+        return $localized ? get_string($this->typestringid, 'mod_booking') : $this->type;
     }
 
     /**
@@ -221,15 +229,19 @@ class subbooking_timeslot implements booking_subbooking {
      * Return interface for this subbooking type as an array of data & template.
      *
      * @param booking_option_settings $settings
+     * @param int $userid
      * @return array
      */
-    public function return_interface(booking_option_settings $settings): array {
+    public function return_interface(booking_option_settings $settings, int $userid): array {
 
         // The interface of the timeslot booking should merge when there are multiple slot bookings.
         // Therefore, we need to first find out how many of these are present.
-        $arrayofmine = array_filter($settings->subbookings, function($x) {
-            return $x->type == $this->type;
-        });
+        $arrayofmine = array_filter(
+            $settings->subbookings,
+            function ($x) {
+                return $x->type == $this->type;
+            }
+        );
 
         // We only want to actually render anything when we are in the last item.
         $lastitem = end($arrayofmine);
@@ -252,10 +264,10 @@ class subbooking_timeslot implements booking_subbooking {
      * But normally the itemid here is the same as the subboooking it.
      *
      * @param int $itemid
-     * @param object $user
+     * @param int $userid
      * @return array
      */
-    public function return_subbooking_information(int $itemid = 0, $user = null): array {
+    public function return_subbooking_information(int $itemid = 0, int $userid = 0): array {
 
         // In the case of this subbooking type, the itemid refers to the slots.
         // In other types, the itemid is actually $this->id.
@@ -293,10 +305,10 @@ class subbooking_timeslot implements booking_subbooking {
      * Evey subbooking type can decide what to store in the answer json.
      *
      * @param int $itemid
-     * @param object $user
+     * @param ?object $user
      * @return string
      */
-    public function return_answer_json(int $itemid, $user = null): string {
+    public function return_answer_json(int $itemid, ?object $user = null): string {
 
         return '';
     }
@@ -360,21 +372,21 @@ class subbooking_timeslot implements booking_subbooking {
         $settings = singleton_service::get_instance_of_booking_option_settings($this->optionid);
 
         foreach ($settings->sessions as $session) {
-
             $date = dates_handler::prettify_datetime($session->coursestarttime, $session->courseendtime);
 
             $data['days'][] = [
                 "day" => $date->startdate,
             ];
 
-            $slots = dates_handler::create_slots($session->coursestarttime,
+            $slots = dates_handler::create_slots(
+                $session->coursestarttime,
                 $session->courseendtime,
-                $this->duration);
+                $this->duration
+            );
 
             $price = price::get_price('subbooking', $this->id);
 
             foreach ($slots as $slot) {
-
                 if (!isset($data['slots'])) {
                     $tempslots[] = [
                         "slot" => $slot->datestring,
@@ -452,7 +464,6 @@ class subbooking_timeslot implements booking_subbooking {
         $answers = $this->return_answers();
 
         foreach ($slots as $slot) {
-
             foreach ($answers as $answer) {
                 // Does the answer concern the right slot?
                 if ($answer->itemid != $slot['itemid']) {
@@ -468,12 +479,39 @@ class subbooking_timeslot implements booking_subbooking {
                             unset($slot['price']);
                             unset($slot['currency']);
                         }
-                    break;
+                        break;
                 }
             }
             $returnarray[] = $slot;
         }
 
         return $returnarray;
+    }
+
+    /**
+     * Is blocking. This depends on the settings and user.
+     * @param booking_option_settings $settings
+     * @param int $userid
+     *
+     * @return bool
+     *
+     */
+    public function is_blocking(booking_option_settings $settings, int $userid = 0): bool {
+        return !empty($this->block);
+    }
+
+    /**
+     * After booking action.
+     *
+     * @param booking_option_settings $settings
+     * @param int $userid
+     * @param int $recordid
+     *
+     * @return bool
+     *
+     */
+    public function after_booking_action(booking_option_settings $settings, int $userid = 0, int $recordid = 0): bool {
+
+        return true;
     }
 }

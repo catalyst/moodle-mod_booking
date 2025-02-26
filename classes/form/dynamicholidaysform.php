@@ -74,7 +74,7 @@ class dynamicholidaysform extends dynamic_form {
         if (!empty($data->holidaystart) && is_array($data->holidaystart)) {
 
             foreach ($data->holidaystart as $idx => $holidaystart) {
-                $holiday = new stdClass;
+                $holiday = new stdClass();
                 $holiday->id = $data->holidayid[$idx];
                 if (!empty($data->holidayname[$idx])) {
                     $holiday->name = trim($data->holidayname[$idx]);
@@ -101,7 +101,7 @@ class dynamicholidaysform extends dynamic_form {
     public function set_data_for_dynamic_submission(): void {
         global $DB;
 
-        $data = new stdClass;
+        $data = new stdClass();
 
         if ($existingholidays = $DB->get_records_sql("SELECT * FROM {booking_holidays} ORDER BY startdate DESC")) {
             $data->holidays = count($existingholidays);
@@ -152,11 +152,11 @@ class dynamicholidaysform extends dynamic_form {
         foreach ($holidaysarray as $holiday) {
 
             // If it's a new holiday id: insert.
-            if (!in_array($holiday->id, $existingholidayids)) {
+            if (!in_array($holiday->id, array_keys($existingholidays))) {
                 $DB->insert_record('booking_holidays', $holiday);
             } else {
                 // If it's an existing holiday id: update.
-                $existingrecord = $DB->get_record('booking_holidays', ['id' => $holiday->id]);
+                $existingrecord = $existingholidays[$holiday->id];
                 $holiday->id = $existingrecord->id;
                 $DB->update_record('booking_holidays', $holiday);
             }
@@ -214,9 +214,7 @@ class dynamicholidaysform extends dynamic_form {
         $repeatedholidays[] = $mform->createElement('html', '<hr/>');
 
         $numberofholidaystoshow = 1;
-        if ($existingholidays = $DB->get_records('booking_holidays')) {
-            $numberofholidaystoshow = count($existingholidays);
-        }
+        $numberofholidaystoshow = $DB->count_records('booking_holidays') ?? 1;
 
         $this->repeat_elements($repeatedholidays, $numberofholidaystoshow,
             $repeateloptions, 'holidays', 'addholiday', 1, get_string('addholiday', 'mod_booking'), true, 'deleteholiday');

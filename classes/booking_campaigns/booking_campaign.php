@@ -87,9 +87,10 @@ interface booking_campaign {
     /**
      * Function to apply the campaign price factor.
      * @param float $price the original price
+     * @param int $userid for userspecific campaigns.
      * @return float the new price
      */
-    public function get_campaign_price(float $price): float;
+    public function get_campaign_price(float $price, int $userid = 0): float;
 
     /**
      * Function to apply the logic of the particular campaign.
@@ -101,7 +102,20 @@ interface booking_campaign {
     /**
      * Check if particular campaign is blocking right now.
      * @param booking_option_settings $settings the booking option settings class
+     * @param int $userid blocking can be specific to a user
      * @return array
      */
-    public function is_blocking(booking_option_settings $settings): array;
+    public function is_blocking(booking_option_settings $settings, int $userid): array;
+
+    /**
+     * Return name of campaign.
+     * @return string
+     */
+    public function get_name_of_campaign(): string;
+
+    /**
+     * Return id of campaign.
+     * @return int
+     */
+    public function get_id_of_campaign(): int;
 }

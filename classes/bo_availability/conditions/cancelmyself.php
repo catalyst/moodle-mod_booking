@@ -49,9 +49,21 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class cancelmyself implements bo_condition {
-
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_CANCELMYSELF;
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = false;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -87,8 +99,10 @@ class cancelmyself implements bo_condition {
 
         // If cancelling was disabled in the booking option or for the whole instance...
         // ...then we do not show the cancel button.
-        if (booking_option::get_value_of_json_by_key($optionid, 'disablecancel')
-            || booking::get_value_of_json_by_key($settings->bookingid, 'disablecancel')) {
+        if (
+            booking_option::get_value_of_json_by_key($optionid, 'disablecancel')
+            || booking::get_value_of_json_by_key($settings->bookingid, 'disablecancel')
+        ) {
             return true;
         }
 
@@ -121,11 +135,14 @@ class cancelmyself implements bo_condition {
                 // We have to check if there's a limit until a certain date.
                 $canceluntil = booking_option::return_cancel_until_date($optionid);
                 // If the cancel until date has passed, we do not show cancel button.
-                if (class_exists('local_shopping_cart\shopping_cart')
-                    && (!empty($settings->jsonobject->useprice))) {
+                if (
+                    class_exists('local_shopping_cart\shopping_cart')
+                    && (!empty($settings->jsonobject->useprice))
+                ) {
                     $item = (object)[
                         'itemid' => $settings->id,
                         'componentname' => 'mod_booking',
+                        'canceluntil' => $canceluntil,
                     ];
                     // Shopping cart allows to cancel.
                     if (!shopping_cart::allowed_to_cancel_for_item($item, 'option')) {
@@ -134,10 +151,11 @@ class cancelmyself implements bo_condition {
 
                     // If user is confirmed, we don't block.
                     if (isset($bookinginformation['onwaitinglist'])) {
-
                         // We don't show cancel when we don't ask for confirmation and it's not fully booked.
-                        if (empty($settings->waitforconfirmation)
-                            && $bookinginformation['onwaitinglist']['fullybooked'] === false) {
+                        if (
+                            empty($settings->waitforconfirmation)
+                            && $bookinginformation['onwaitinglist']['fullybooked'] === false
+                        ) {
                             $isavailable = true;
                         } else {
                             $ba = $bookinganswer->usersonwaitinglist[$userid];
@@ -149,8 +167,14 @@ class cancelmyself implements bo_condition {
                             }
                         }
                     }
+                }
 
-                } else if ($canceluntil != 0 && $now > $canceluntil) {
+                if (!empty($canceluntil) && $now > $canceluntil) {
+                    // Don't display cancel button.
+                    $isavailable = true;
+                }
+
+                if (self::apply_coolingoff_period($settings, $userid)) {
                     $isavailable = true;
                 }
             }
@@ -162,6 +186,18 @@ class cancelmyself implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -204,7 +240,7 @@ class cancelmyself implements bo_condition {
 
         $isavailable = $this->is_available($settings, $userid, $not);
         if (!class_exists('local_shopping_cart\shopping_cart')) {
-            $description = $this->get_description_string($isavailable, $full);
+            $description = $this->get_description_string($isavailable, $full, $settings);
         } else {
             $description = 'sc cancel';
         }
@@ -249,8 +285,13 @@ class cancelmyself implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
         global $USER, $PAGE;
         if ($userid === null) {
@@ -259,28 +300,55 @@ class cancelmyself implements bo_condition {
 
         // At this point, we need some logic, because we have a different button for ...
         // ... purchases and just normal bookings.
-        if (class_exists('local_shopping_cart\shopping_cart')
-            && !empty($settings->jsonobject->useprice)) {
+        if (
+            class_exists('local_shopping_cart\shopping_cart')
+            && !empty($settings->jsonobject->useprice)
+        ) {
+            $user = singleton_service::get_instance_of_user($userid);
+            $price = price::get_price('option', $settings->id, $user);
 
-            // Get the booking answers for this instance.
-            $bookinganswer = singleton_service::get_instance_of_booking_answers($settings);
-            $bookinginformation = $bookinganswer->return_all_booking_information($userid);
+            if (
+                !empty((float)($price['price'] ?? 0))
+                || !empty(get_config('mod_booking', 'displayemptyprice'))
+            ) {
+                // Get the booking answers for this instance.
+                $bookinganswer = singleton_service::get_instance_of_booking_answers($settings);
+                $bookinginformation = $bookinganswer->return_all_booking_information($userid);
 
-            if (!isset($bookinginformation['onwaitinglist'])) {
-                $label = get_string('cancelsign', 'mod_booking')
-                . "&nbsp;" . get_string('cancelpurchase', 'local_shopping_cart');
+                if (
+                    !isset($bookinginformation['onwaitinglist'])
+                    && !isset($bookinginformation['iambooked']['paidwithcredits'])
+                ) {
+                    $label = get_string('cancelsign', 'mod_booking')
+                    . "&nbsp;" . get_string('cancelpurchase', 'local_shopping_cart');
 
-                return bo_info::render_button($settings, $userid, $label,
-                    'btn btn-light btn-sm shopping-cart-cancel-button',
-                    false, $fullwidth, 'button', 'option', false);
+                    return bo_info::render_button(
+                        $settings,
+                        $userid,
+                        $label,
+                        'btn btn-light btn-sm shopping-cart-cancel-button',
+                        false,
+                        $fullwidth,
+                        'button',
+                        'option',
+                        false
+                    );
+                }
             }
         }
 
         $label = $this->get_description_string();
-            return bo_info::render_button($settings, $userid, $label,
+            return bo_info::render_button(
+                $settings,
+                $userid,
+                $label,
                 'btn btn-light btn-sm',
-                false, $fullwidth, 'button', 'option', false);
-
+                false,
+                $fullwidth,
+                'button',
+                'option',
+                false
+            );
     }
 
     /**
@@ -289,7 +357,28 @@ class cancelmyself implements bo_condition {
      * @return string
      */
     private function get_description_string() {
+
+        // Do not trigger billboard here.
         return get_string('cancelsign', 'mod_booking') . "&nbsp;" .
             get_string('cancelmyself', 'mod_booking');
+    }
+
+    /**
+     * Returns false if we are still within the coolingoff period
+     * @param booking_option_settings $settings
+     * @param int $userid
+     * @return bool
+     */
+    public static function apply_coolingoff_period($settings, $userid) {
+
+        $coolingoffperiod = get_config('booking', 'coolingoffperiod');
+        if ($coolingoffperiod > 0) {
+            $ba = singleton_service::get_instance_of_booking_answers($settings);
+            $timemodified = $ba->users[$userid]->timemodified ?? 0;
+            if (strtotime("+ $coolingoffperiod seconds", $timemodified) > time()) {
+                return true;
+            }
+        }
+        return false;
     }
 }

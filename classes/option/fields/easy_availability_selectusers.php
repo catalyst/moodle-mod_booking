@@ -90,14 +90,14 @@ class easy_availability_selectusers extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         // Select users condition.
         if ($formdata->bo_cond_selectusers_restrict == 1 && !empty(($formdata->bo_cond_selectusers_userids))) {
@@ -133,7 +133,7 @@ class easy_availability_selectusers extends field_base {
         bo_info::save_json_conditions_from_form($formdata);
         $newoption->availability = $formdata->availability;
 
-        return '';
+        return [];
     }
 
     /**
@@ -153,12 +153,22 @@ class easy_availability_selectusers extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         // Add the selectusers condition:
         // Select users who can override booking_time condition.
@@ -189,7 +199,7 @@ class easy_availability_selectusers extends field_base {
             },
         ];
         $mform->addElement('autocomplete', 'bo_cond_selectusers_userids',
-            get_string('bo_cond_selectusers_userids', 'mod_booking'), [], $options);
+            get_string('bocondselectusersuserids', 'mod_booking'), [], $options);
         $mform->hideIf('bo_cond_selectusers_userids', 'bo_cond_selectusers_restrict', 'notchecked');
 
         // This is to transmit the original availability values.

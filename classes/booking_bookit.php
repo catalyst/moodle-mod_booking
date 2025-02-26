@@ -29,6 +29,8 @@ use cache;
 use context_module;
 use context_system;
 use mod_booking\bo_availability\bo_info;
+use mod_booking\bo_availability\conditions\cancelmyself;
+use mod_booking\local\modechecker;
 use mod_booking\output\bookingoption_description;
 use mod_booking\output\bookit_button;
 use mod_booking\output\prepagemodal;
@@ -105,7 +107,8 @@ class booking_bookit {
     public static function render_bookit_template_data(
         booking_option_settings $settings,
         int $userid = 0,
-        bool $renderprepagemodal = true) {
+        bool $renderprepagemodal = true
+    ) {
 
         // Get blocking conditions, including prepages$prepages etc.
         $results = bo_info::get_condition_results($settings->id, $userid);
@@ -116,20 +119,20 @@ class booking_bookit {
         $extrabuttoncondition = '';
         $justmyalert = null;
         foreach ($results as $result) {
-
-            switch ($result['button'] ) {
+            switch ($result['button']) {
                 case MOD_BOOKING_BO_BUTTON_MYBUTTON:
                     $buttoncondition = $result['classname'];
                     break;
-                case MOD_BOOKING_BO_BUTTON_MYALERT;
+                case MOD_BOOKING_BO_BUTTON_MYALERT:
                     // Here we could use a more sophisticated way of rights management.
                     // Right now, the logic is just linked to one right.
                     $context = context_module::instance(($settings->cmid));
                     if (has_capability('mod/booking:bookforothers', $context)) {
-                        // We still render the alert, but just in supplement to the other butotn.
+                        // We still render the alert, but just in supplement to the other button.
                         $extrabuttoncondition = $result['classname'];
                     } else {
                         $buttoncondition = $result['classname'];
+                        $renderprepagemodal = false;
                     }
                     break;
                 case MOD_BOOKING_BO_BUTTON_NOBUTTON:
@@ -145,9 +148,11 @@ class booking_bookit {
                     $buttoncondition = $result['classname'];
                     break;
                 case MOD_BOOKING_BO_BUTTON_CANCEL:
-                    $justmyalert = false;
-                    $extrabuttoncondition = $result['classname'];
-                    $renderprepagemodal = false;
+                    if (modechecker::use_special_details_page_treatment()) {
+                        $justmyalert = false;
+                        $extrabuttoncondition = $result['classname'];
+                        $renderprepagemodal = false;
+                    }
                     break;
             }
         }
@@ -166,7 +171,6 @@ class booking_bookit {
 
         // Big decision: can we render the button right away, or do we need to introduce a modal.
         if ($showprepagemodal) {
-
             // We render the button only from the highest relevant blocking condition.
 
             $data = new prepagemodal(
@@ -177,12 +181,19 @@ class booking_bookit {
                 $userid, // The userid for which all this will be rendered.
             );
 
+            $data->results = json_encode(array_keys($results));
+
             $datas[] = $data;
 
             $viewparam = booking::get_value_of_json_by_key($settings->bookingid, 'viewparam');
             $turnoffmodals = 0; // By default, we use modals.
-            if ($viewparam == MOD_BOOKING_VIEW_PARAM_LIST) {
-                // Only if we use list view, we can use inline modals.
+            if (
+                $viewparam == MOD_BOOKING_VIEW_PARAM_LIST
+                || $viewparam == MOD_BOOKING_VIEW_PARAM_LIST_IMG_LEFT
+                || $viewparam == MOD_BOOKING_VIEW_PARAM_LIST_IMG_RIGHT
+                || $viewparam == MOD_BOOKING_VIEW_PARAM_LIST_IMG_LEFT_HALF
+            ) {
+                // Only if we use one of the list views, we can use inline modals.
                 // So only in this case, we need to check the config setting.
                 $turnoffmodals = get_config('booking', 'turnoffmodals');
             }
@@ -198,7 +209,11 @@ class booking_bookit {
 
             // The extra button condition is used to show Alert & Button, if this is allowed for a user.
             if (!$justmyalert && !empty($extrabuttoncondition)) {
-                $condition = new $extrabuttoncondition();
+                if (method_exists($extrabuttoncondition, 'instance')) {
+                    $condition = $extrabuttoncondition::instance();
+                } else {
+                    $condition = new $extrabuttoncondition();
+                }
 
                 list($template, $data) = $condition->render_button($settings, $userid, $full, false, true);
 
@@ -208,9 +223,14 @@ class booking_bookit {
                 $templates[] = $template;
             }
 
-            $condition = new $buttoncondition();
+            if (method_exists($buttoncondition, 'instance')) {
+                $condition = $buttoncondition::instance();
+            } else {
+                $condition = new $buttoncondition();
+            }
 
             list($template, $data) = $condition->render_button($settings, $userid, $full, false, true);
+            $data['results'] = json_encode(array_keys($results));
 
             // If there is an extra button condition, we don't use two templates but one.
             // We just move the extra condition to a different area.
@@ -246,25 +266,31 @@ class booking_bookit {
         global $USER, $CFG;
 
         // Make sure the user has the right to book in principle.
-        $context = context_system::instance();
+        if ($area === 'option') {
+            $settings = singleton_service::get_instance_of_booking_option_settings($itemid);
+            $context = context_module::instance($settings->cmid);
+        } else {
+            $context = context_system::instance();
+        }
 
-        if (!empty($userid)
+        if (
+            !empty($userid)
             && $userid != $USER->id
-            && !has_capability('mod/booking:bookforothers', $context)) {
+            && !has_capability('mod/booking:bookforothers', $context)
+        ) {
             throw new moodle_exception('norighttoaccess', 'mod_booking');
         } else if (empty($userid)) {
             $userid = $USER->id;
         }
 
         if ($area === 'option') {
-
             $settings = singleton_service::get_instance_of_booking_option_settings($itemid);
             $boinfo = new bo_info($settings);
 
             // There are two cases where we can actually book.
             // We call thefunction with hadblock set to true.
             // This means that we only get those blocks that actually should prevent booking.
-            list($id, $isavailable, $description) = $boinfo->is_available($itemid, $userid, true);
+            [$id, $isavailable, $description] = $boinfo->is_available($itemid, $userid, true);
 
             // If isavailable is true, there is actually no blocking condition at all.
             // This might never be the case, as we use this to introduce prepages and buttons (add to cart or bookit).
@@ -315,14 +341,14 @@ class booking_bookit {
 
             } else if ($id === MOD_BOOKING_BO_COND_CONFIRMBOOKWITHCREDITS) {
 
-                // Make sure cache is not blocking anymore.
-                $cache = cache::make('mod_booking', 'confirmbooking');
-                $cachekey = $userid . "_" . $settings->id . '_bookwithcredits';
-                $cache->delete($cachekey);
+                 // Make sure cache is not blocking anymore.
+                 $cache = cache::make('mod_booking', 'confirmbooking');
+                 $cachekey = $userid . "_" . $settings->id . '_bookwithcredits';
 
                 // Now, before actually booking, we also need to subtract the credit from the concerned user.
                 // Get the used custom profile field.
                 if (!$profilefield = get_config('booking', 'bookwithcreditsprofilefield')) {
+                    $cache->delete($cachekey);
                     throw new moodle_exception('nocreditsfielddefined', 'mod_booking');
                 }
 
@@ -330,9 +356,11 @@ class booking_bookit {
                     $user = singleton_service::get_instance_of_user($userid);
                 } else {
                     $user = $USER;
+                    profile_load_custom_fields($user);
                 }
 
                 if ($user->profile[$profilefield] < $settings->credits) {
+                    $cache->delete($cachekey);
                     throw new moodle_exception('notenoughcredits', 'mod_booking');
                 }
 
@@ -347,12 +375,18 @@ class booking_bookit {
             } else if ($id === MOD_BOOKING_BO_COND_ASKFORCONFIRMATION) {
                 $isavailable = true;
             } else if ($id === MOD_BOOKING_BO_COND_ALREADYBOOKED || $id === MOD_BOOKING_BO_COND_ONWAITINGLIST) {
-
-                // If the cancel condition is blocking here, we can actually mark the option for cancelation.
-                $cache = cache::make('mod_booking', 'confirmbooking');
-                $cachekey = $userid . "_" . $settings->id . "_cancel";
-                $now = time();
-                $cache->set($cachekey, $now);
+                $cancelmyself = new cancelmyself();
+                // Add a layer of security to not cancel just because of unintentional double click.
+                if (
+                    !cancelmyself::apply_coolingoff_period($settings, $userid) &&
+                    !$cancelmyself->is_available($settings, $userid)
+                ) {
+                     // If the cancel condition is blocking here, we can actually mark the option for cancelation.
+                    $cache = cache::make('mod_booking', 'confirmbooking');
+                    $cachekey = $userid . "_" . $settings->id . "_cancel";
+                    $now = time();
+                    $cache->set($cachekey, $now);
+                }
 
             } else if ($id === MOD_BOOKING_BO_COND_CONFIRMCANCEL) {
 
@@ -516,19 +550,6 @@ class booking_bookit {
         $bookingoption = booking_option::create_option_from_optionid($itemid);
 
         $settings = singleton_service::get_instance_of_booking_option_settings($itemid);
-
-        // Make sure that we only buy from instance the user has access to.
-        // This is just fraud prevention and can not happen ordinarily.
-        // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
-        /* $cm = get_coursemodule_from_instance('booking', $bookingoption->bookingid); */
-
-        // TODO: Find out if the executing user has the right to access this instance.
-        // This can lead to problems, rights should be checked further up.
-        // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
-        /* $context = context_module::instance($cm->id);
-        if (!has_capability('mod/booking:choose', $context)) {
-            return null;
-        } */
 
         $user = price::return_user_to_buy_for($userid);
 

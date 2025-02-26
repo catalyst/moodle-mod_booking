@@ -13,6 +13,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
 /**
  * The mod_booking taecher added event.
  *
@@ -51,7 +52,7 @@ class teacher_removed extends \core\event\base {
      * @return string
      */
     public static function get_name() {
-        return get_string('eventteacher_removed', 'mod_booking');
+        return get_string('eventteacherremoved', 'mod_booking');
     }
 
     /**

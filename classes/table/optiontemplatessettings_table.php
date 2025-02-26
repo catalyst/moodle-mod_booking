@@ -114,7 +114,16 @@ class optiontemplatessettings_table extends table_sql {
             ['optionid' => $values->optionid, 'action' => 'delete', 'id' => $this->cmid]);
         $output .= $OUTPUT->single_button($url, $delete, 'get');
         $edit = get_string('edit');
-        $url = new moodle_url('/mod/booking/edit_optiontemplates.php', ['optionid' => $values->optionid, 'id' => $this->cmid]);
+        $returnurl = new moodle_url('/mod/booking/optiontemplatessettings.php', ['id' => $this->cmid]);
+        $url = new moodle_url(
+            '/mod/booking/editoptions.php',
+            [
+            'optionid' => $values->optionid,
+            'id' => $this->cmid,
+            'addastemplate' => '1',
+            'returnurl' => $returnurl->out(),
+            ]
+        );
         $output .= $OUTPUT->single_button($url, $edit, 'get');
         return $output;
     }

@@ -27,11 +27,13 @@ namespace mod_booking\output;
 use context_module;
 use context_system;
 use html_writer;
+use local_wunderbyte_table\local\customfield\wbt_field_controller_info;
 use mod_booking\booking;
 use mod_booking\booking_answers;
 use mod_booking\booking_bookit;
 use mod_booking\booking_context_helper;
 use mod_booking\booking_option;
+use mod_booking\local\modechecker;
 use mod_booking\option\dates_handler;
 use mod_booking\price;
 use mod_booking\singleton_service;
@@ -49,6 +51,8 @@ use templatable;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class bookingoption_description implements renderable, templatable {
+    /** @var int $optionid optionid */
+    private $optionid = null;
 
     /** @var string $identifier unique identifier of the booking option */
     private $identifier = null;
@@ -83,6 +87,12 @@ class bookingoption_description implements renderable, templatable {
     /** @var string $imageurl URL of an uploaded image for the option */
     private $imageurl = null;
 
+    /** @var string $editurl URL to edit the option */
+    private $editurl = null;
+
+    /** @var string $returnurl URL to edit the option */
+    public $returnurl = '';
+
     /** @var string $location as saved in db */
     private $location = null;
 
@@ -94,6 +104,9 @@ class bookingoption_description implements renderable, templatable {
 
     /** @var string $duration is saved in db as seconds and will be formatted in this class */
     private $duration = null;
+
+    /** @var string $timeremaining */
+    private $timeremaining = null;
 
     /** @var string $booknowbutton as saved in db in minutes */
     private $booknowbutton = null;
@@ -155,6 +168,21 @@ class bookingoption_description implements renderable, templatable {
     /** @var string $bookingclosingtime */
     private $bookingclosingtime = '';
 
+    /** @var bool $selflearningcourse */
+    private $selflearningcourse = null;
+
+    /** @var bool $canstillbecancelled */
+    private $canstillbecancelled = null;
+
+    /** @var string $canceluntil */
+    private $canceluntil = null;
+
+    /** @var bool $selflearningcourseshowdurationinfo */
+    private $selflearningcourseshowdurationinfo = null;
+
+    /** @var bool $selflearningcourseshowdurationinfoexpired */
+    private $selflearningcourseshowdurationinfoexpired = null;
+
     /**
      * Constructor.
      *
@@ -164,15 +192,18 @@ class bookingoption_description implements renderable, templatable {
      * @param bool $withcustomfields
      * @param bool|null $forbookeduser
      * @param object|null $user
+     * @param bool $ashtml
      *
      */
     public function __construct(
-            int $optionid,
-            $bookingevent = null,
-            int $descriptionparam = MOD_BOOKING_DESCRIPTION_WEBSITE,
-            bool $withcustomfields = true,
-            bool $forbookeduser = null,
-            object $user = null) {
+        int $optionid,
+        $bookingevent = null,
+        int $descriptionparam = MOD_BOOKING_DESCRIPTION_WEBSITE,
+        bool $withcustomfields = true,
+        ?bool $forbookeduser = null,
+        ?object $user = null,
+        $ashtml = false
+    ) {
 
         global $CFG, $PAGE, $USER;
 
@@ -197,8 +228,11 @@ class bookingoption_description implements renderable, templatable {
             }
         }
 
+        // We store the optionid.
+        $this->optionid = $optionid;
+
         // These fields can be gathered directly from settings.
-        $this->title = $settings->text;
+        $this->title = $settings->get_title_with_prefix();
 
         // Prefix to be shown before title.
         $this->titleprefix = $settings->titleprefix;
@@ -234,13 +268,58 @@ class bookingoption_description implements renderable, templatable {
         // There can be more than one modal, therefore we use the id of this record.
         $this->modalcounter = $settings->id;
 
-        // Format the duration correctly.
-        $seconds = $settings->duration;
-        $minutes = $seconds / 60;
-        $d = floor ($minutes / 1440);
-        $h = floor (($minutes - $d * 1440) / 60);
-        $m = $minutes - ($d * 1440) - ($h * 60);
-        $this->duration = "{$d} " . get_string("days") . "  {$h} " . get_string("hours") . "  {$m} " . get_string("minutes");
+        // Check if it's a self-learning course. There's a JSON flag for this.
+        if (!empty($settings->selflearningcourse)) {
+            $this->selflearningcourse = true;
+
+            if (get_config('booking', 'selflearningcoursehideduration')) {
+                $this->selflearningcourseshowdurationinfo = null;
+            } else if (!empty($settings->duration)) {
+                // We do not show duration info if it is set to 0.
+                $this->selflearningcourseshowdurationinfo = true;
+
+                // Format the duration correctly.
+                $this->duration = format_time($settings->duration);
+
+                $ba = singleton_service::get_instance_of_booking_answers($settings);
+                $buyforuser = price::return_user_to_buy_for();
+                if (isset($ba->usersonlist[$buyforuser->id])) {
+                    $timebooked = $ba->usersonlist[$buyforuser->id]->timecreated;
+                    $timeremainingsec = $timebooked + $settings->duration - time();
+
+                    if ($timeremainingsec <= 0) {
+                        $this->selflearningcourseshowdurationinfo = null;
+                        $this->selflearningcourseshowdurationinfoexpired = true;
+                    } else {
+                        $this->timeremaining = format_time($timeremainingsec);
+                    }
+                }
+            }
+        }
+
+        // Show info until when the booking option can be cancelled.
+        // If cancelling was disabled in the booking option or for the whole instance...
+        // ...then we do not show the cancel until info.
+        if (
+            booking_option::get_value_of_json_by_key($optionid, 'disablecancel')
+            || booking::get_value_of_json_by_key($settings->bookingid, 'disablecancel')
+        ) {
+            $this->canceluntil = null;
+        } else {
+            // Check if the option has its own canceluntil date.
+            $canceluntiltimestamp = booking_option::get_value_of_json_by_key($optionid, 'canceluntil');
+            if (!empty($canceluntiltimestamp)) {
+                $this->canceluntil = userdate($canceluntiltimestamp, get_string('strftimedatetime', 'langconfig'));
+            } else {
+                $canceluntiltimestamp = booking_option::return_cancel_until_date($optionid);
+                if (!empty($canceluntiltimestamp)) {
+                    $this->canceluntil = userdate($canceluntiltimestamp, get_string('strftimedatetime', 'langconfig'));
+                }
+            }
+            if (!empty($canceluntiltimestamp) && ($canceluntiltimestamp > time())) {
+                $this->canstillbecancelled = true;
+            }
+        }
 
         // Datestring for date series and calculation of educational unit length.
         $this->dayofweektime = $settings->dayofweektime;
@@ -265,7 +344,6 @@ class bookingoption_description implements renderable, templatable {
             || (has_capability('mod/booking:addeditownoption', $modcontext) && $isteacher)
             || (has_capability('mod/booking:addeditownoption', $syscontext) && $isteacher)
         ) {
-
             $this->showmanageresponses = true;
 
             // Add a link to redirect to the booking option.
@@ -295,10 +373,10 @@ class bookingoption_description implements renderable, templatable {
         booking_context_helper::fix_booking_page_context($PAGE, $cmid);
 
         // Description from booking option settings formatted as HTML.
-        $this->description = format_text($settings->description, FORMAT_HTML);
+        $this->description = $settings->description;
 
         // Do the same for internal annotation.
-        $this->annotation = format_text($settings->annotation, FORMAT_HTML);
+        $this->annotation = $settings->annotation;
 
         // Currently, this will only get the description for the current user.
         $this->statusdescription = $bookingoption->get_text_depending_on_status($bookinganswers);
@@ -308,21 +386,44 @@ class bookingoption_description implements renderable, templatable {
 
         // Every date will be an array of datestring and customfields.
         // But customfields will only be shown if we show booking option information inline.
-
-        $this->dates = $bookingoption->return_array_of_sessions($bookingevent,
-                $descriptionparam, $withcustomfields, $forbookeduser);
-
-        if (!empty($this->dates)) {
-            $this->datesexist = true;
+        // Make sure, that optiondates (sessions) are not stored for self-learning courses.
+        if (empty($settings->selflearningcourse)) {
+            $this->dates = $bookingoption->return_array_of_sessions(
+                $bookingevent,
+                $descriptionparam,
+                $withcustomfields,
+                $forbookeduser,
+                $ashtml
+            );
+            if (!empty($this->dates)) {
+                $this->datesexist = true;
+            }
         }
 
-        $colteacher = new col_teacher($optionid, $settings);
+        $colteacher = new col_teacher($optionid, $settings, true);
         $this->teachers = $colteacher->teachers;
 
         // User object of the responsible contact.
         $this->responsiblecontactuser = $settings->responsiblecontactuser ?? null;
         if (!empty($this->responsiblecontactuser)) {
-            $this->responsiblecontactuser->link = new moodle_url('/user/profile.php', ['id' => $this->responsiblecontactuser->id]);
+            $isteacher = false;
+            // For teachers of this course, link to teacherpage instead of user profile.
+            foreach ($settings->teachers as $teacher) {
+                if ($this->responsiblecontactuser->id == $teacher->userid) {
+                    $isteacher = true;
+                }
+            }
+            if ($isteacher) {
+                $this->responsiblecontactuser->link = new moodle_url(
+                    '/mod/booking/teacher.php',
+                    ['teacherid' => $settings->responsiblecontact]
+                );
+            } else {
+                $this->responsiblecontactuser->link = new moodle_url(
+                    '/user/profile.php',
+                    ['id' => $this->responsiblecontactuser->id]
+                );
+            }
         }
 
         if (empty($settings->bookingopeningtime)) {
@@ -356,6 +457,7 @@ class bookingoption_description implements renderable, templatable {
         }
 
         // Add price.
+        // phpcs:ignore moodle.Commenting.TodoComment.MissingInfoInline
         // TODO: Currently this will only use the logged in $USER, this won't work for the cashier use case!
         $priceitem = price::get_price('option', $optionid, $user);
         if (!empty($priceitem)) {
@@ -376,12 +478,40 @@ class bookingoption_description implements renderable, templatable {
         // Manual factor to be applied to price calculation with formula.
         $this->priceformulamultiply = $settings->priceformulamultiply;
 
-        $baseurl = $CFG->wwwroot;
-        $moodleurl = new \moodle_url($baseurl . '/mod/booking/optionview.php', [
-            'optionid' => $settings->id,
-            'cmid' => $cmid,
-            // Do not set userid here as it might be written into calendar event!
+        if (!modechecker::is_ajax_or_webservice_request()) {
+            $returnurl = $PAGE->url->out();
+        } else {
+            $returnurl = '/';
+        }
+
+        // The current page is not /mod/booking/optionview.php.
+        $moodleurl = new moodle_url("/mod/booking/optionview.php", [
+            "optionid" => (int)$settings->id,
+            "cmid" => (int)$cmid,
+            "userid" => (int)$user->id,
+            'returnto' => 'url',
+            'returnurl' => $returnurl,
         ]);
+
+        // Set the returnurl to navigate back to after form is saved.
+        $viewphpurl = new moodle_url('/mod/booking/view.php', ['id' => $cmid]);
+        $returnurl = $viewphpurl->out();
+
+        if (
+            has_capability('mod/booking:updatebooking', $modcontext)
+            || (has_capability('mod/booking:addeditownoption', $modcontext) && $isteacher)
+            || (has_capability('mod/booking:addeditownoption', $syscontext) && $isteacher)
+        ) {
+            // The current page is not /mod/booking/optionview.php.
+            $editurl = new moodle_url("/mod/booking/editoptions.php", [
+                "optionid" => (int)$settings->id,
+                "id" => (int)$cmid,
+                'returnto' => 'url',
+                'returnurl' => $returnurl,
+            ]);
+
+            $this->editurl = $editurl->out(false);
+        }
 
         switch ($descriptionparam) {
             case MOD_BOOKING_DESCRIPTION_WEBSITE:
@@ -400,8 +530,9 @@ class bookingoption_description implements renderable, templatable {
                 $this->booknowbutton = "<a href=$encodedlink class='btn btn-primary'>"
                         . get_string('gotobookingoption', 'booking')
                         . "</a>";
-                // TODO: We would need an event tracking status changes between notbooked, iambooked and onwaitinglist...
-                // TODO: ...in order to update the event table accordingly.
+                // phpcs:ignore moodle.Commenting.TodoComment.MissingInfoInline
+                /* TODO: We would need an event tracking status changes between notbooked, iambooked and onwaitinglist...
+                TODO: ...in order to update the event table accordingly. */
                 break;
 
             case MOD_BOOKING_DESCRIPTION_ICAL:
@@ -413,7 +544,7 @@ class bookingoption_description implements renderable, templatable {
                 // The link should be clickable in mails (placeholder {bookingdetails}).
                 $this->booknowbutton = get_string('gotobookingoption', 'booking') . ': ' .
                     '<a href = "' . $moodleurl . '" target = "_blank">' .
-                        $moodleurl->out(false) .
+                        get_string('gotobookingoptionlink', 'booking', $moodleurl->out(false)) .
                     '</a>';
                 break;
 
@@ -448,20 +579,23 @@ class bookingoption_description implements renderable, templatable {
      */
     public function get_returnarray(): array {
         $returnarray = [
-            'title' => $this->title,
+            'title' => format_string($this->title),
             'titleprefix' => $this->titleprefix,
             'invisible' => $this->invisible,
-            'annotation' => $this->annotation,
+            'annotation' => format_text($this->annotation),
             'identifier' => $this->identifier,
             'modalcounter' => $this->modalcounter,
             'userid' => $this->userid,
-            'description' => $this->description,
+            'description' => format_text($this->description),
             'attachments' => $this->attachments,
             'statusdescription' => $this->statusdescription,
             'imageurl' => $this->imageurl,
             'location' => $this->location,
             'address' => $this->address,
             'institution' => $this->institution,
+            'selflearningcourse' => $this->selflearningcourse,
+            'selflearningcourseshowdurationinfo' => $this->selflearningcourseshowdurationinfo,
+            'selflearningcourseshowdurationinfoexpired' => $this->selflearningcourseshowdurationinfoexpired,
             'duration' => $this->duration,
             'dates' => $this->dates,
             'datesexist' => $this->datesexist,
@@ -472,13 +606,21 @@ class bookingoption_description implements renderable, templatable {
             'priceformulaadd' => $this->priceformulaadd,
             'priceformulamultiply' => $this->priceformulamultiply,
             'currency' => $this->currency,
-            'pricecategoryname' => $this->pricecategoryname,
+            'pricecategoryname' => format_string($this->pricecategoryname),
             'dayofweektime' => $this->dayofweektime,
             'bookinginformation' => $this->bookinginformation,
             'bookitsection' => $this->bookitsection,
             'bookingopeningtime' => $this->bookingopeningtime,
             'bookingclosingtime' => $this->bookingclosingtime,
+            'editurl' => !empty($this->editurl) ? $this->editurl : false,
+            'returnurl' => !empty($this->returnurl) ? $this->returnurl : false,
+            'canceluntil' => $this->canceluntil,
+            'canstillbecancelled' => $this->canstillbecancelled,
         ];
+
+        if (!empty($this->timeremaining)) {
+            $returnarray['timeremaining'] = $this->timeremaining;
+        }
 
         if (!empty($this->unitstring)) {
             $returnarray['unitstring'] = $this->unitstring;
@@ -489,7 +631,14 @@ class bookingoption_description implements renderable, templatable {
         if ($this->customfields) {
             foreach ($this->customfields as $key => $value) {
                 if (!isset($returnarray[$key])) {
-                    $returnarray[$key] = is_array($value) ? reset($value) : $value;
+                    // Make sure, print value for arrays will be converted to string.
+                    $printvalue = is_array($value) ? implode(',', $value) : $value;
+
+                    // Get the correct field controller from Wunderbyte table.
+                    $fieldcontroller = wbt_field_controller_info::get_instance_by_shortname($key);
+
+                    // Get the option value from field controller.
+                    $returnarray[$key] = $fieldcontroller->get_option_value_by_key($printvalue);
                 }
             }
         }
@@ -501,6 +650,20 @@ class bookingoption_description implements renderable, templatable {
         }
         if (count($this->teachers) > 0) {
             $returnarray['showteacherslabel'] = 1;
+        }
+
+        // In plugin settings, we can choose customfields we want to have rendered together.
+        $returnarray['optionviewcustomfields'] = '';
+        if (!empty($cfstoshowstring = get_config('booking', 'optionviewcustomfields'))) {
+            $cfstoshow = explode(',', $cfstoshowstring);
+            foreach ($cfstoshow as $cftoshow) {
+                if (!empty($returnarray[$cftoshow])) {
+                    $returnarray['optionviewcustomfields'] .=
+                        "<div class='optionview-customfield-$cftoshow'>" .
+                            $returnarray[$cftoshow] .
+                        "</div>";
+                }
+            }
         }
 
         return $returnarray;

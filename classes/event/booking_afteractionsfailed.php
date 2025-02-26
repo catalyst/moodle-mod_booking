@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * The bookingoption_deleted event.
+ * The booking_afteractionsfailed event.
  *
  * @package mod_booking
  * @copyright 2023 Georgg Maißer, Wunderbyte GmbH
@@ -25,7 +25,7 @@
 namespace mod_booking\event;
 
 /**
- * The bookingoption_deleted event class.
+ * The booking_afteractionsfailed event class.
  *
  * @property-read array $other { Extra information about event. Acesss an instance of the booking module }
  * @since Moodle 4.0
@@ -53,7 +53,7 @@ class booking_afteractionsfailed extends \core\event\base {
      *
      */
     public static function get_name() {
-        return get_string('booking_afteractionsfailed', 'booking');
+        return get_string('bookingafteractionsfailed', 'booking');
     }
 
     /**

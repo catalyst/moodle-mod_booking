@@ -48,12 +48,24 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class booking_time implements bo_condition {
-
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_BOOKING_TIME;
 
     /** @var bool $overridable Indicates if the condition can be overriden. */
     public $overridable = true;
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = true;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -88,17 +100,21 @@ class booking_time implements bo_condition {
         $isavailable = true;
 
         // Get opening and closing time from option settings.
-        list($openingtime, $closingtime) = $this->get_booking_opening_and_closing_time($settings);
+        [$openingtime, $closingtime] = $this->get_booking_opening_and_closing_time($settings);
 
         // If there is a bookingopeningtime and now is smaller, we return false.
-        if (!empty($openingtime)
-            && ($now < $openingtime)) {
+        if (
+            !empty($openingtime)
+            && ($now < $openingtime)
+        ) {
             $isavailable = false;
         }
 
         // If there is a bookingclosingtime and now is bigger, we return false.
-        if (!empty($closingtime)
-            && ($now > $closingtime)) {
+        if (
+            !empty($closingtime)
+            && ($now > $closingtime)
+        ) {
             $isavailable = false;
         }
 
@@ -107,6 +123,33 @@ class booking_time implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        $where = "((bookingopeningtime < 1 OR bookingopeningtime < :bookingopeningtimenow1)
+                  AND (bookingclosingtime < 1 OR bookingclosingtime > :bookingopeningtimenow2))";
+
+        // Using realtime here would destroy our caching.
+        // Cache would be invalidated every second.
+        // Therefore, the filter of bookingopeningtime goes on the timestamp of 00:00.
+        // Closing on 23:59.
+        $nowstart = strtotime('today 00:00');
+        $nowend = strtotime('today 23:59');
+
+        $params = [
+            'bookingopeningtimenow1' => $nowstart,
+            'bookingopeningtimenow2' => $nowend,
+        ];
+
+        return ['', '', '', $params, $where];
     }
 
     /**
@@ -170,19 +213,31 @@ class booking_time implements bo_condition {
     public function add_condition_to_mform(MoodleQuickForm &$mform, int $optionid = 0) {
         global $DB;
 
-        $mform->addElement('checkbox', 'restrictanswerperiodopening',
-                get_string('restrictanswerperiodopening', 'mod_booking'));
+        $mform->addElement(
+            'advcheckbox',
+            'restrictanswerperiodopening',
+            get_string('restrictanswerperiodopening', 'mod_booking')
+        );
 
         $mform->addElement('date_time_selector', 'bookingopeningtime', get_string('from', 'mod_booking'));
         $mform->setType('bookingopeningtime', PARAM_INT);
         $mform->hideIf('bookingopeningtime', 'restrictanswerperiodopening', 'notchecked');
 
-        $mform->addElement('checkbox', 'restrictanswerperiodclosing',
-                get_string('restrictanswerperiodclosing', 'mod_booking'));
+        $mform->addElement(
+            'advcheckbox',
+            'restrictanswerperiodclosing',
+            get_string('restrictanswerperiodclosing', 'mod_booking')
+        );
 
         $mform->addElement('date_time_selector', 'bookingclosingtime', get_string('until', 'mod_booking'));
         $mform->setType('bookingclosingtime', PARAM_INT);
         $mform->hideIf('bookingclosingtime', 'restrictanswerperiodclosing', 'notchecked');
+
+        $mform->addElement(
+            'advcheckbox',
+            'bo_cond_booking_time_sqlfiltercheck',
+            get_string('sqlfiltercheckstring', 'mod_booking')
+        );
 
         // Override conditions should not be necessary here - but let's keep it if we change our mind.
         // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
@@ -212,8 +267,9 @@ class booking_time implements bo_condition {
             $fullclassname = get_class($overridecondition); // With namespace.
             $classnameparts = explode('\\', $fullclassname);
             $shortclassname = end($classnameparts); // Without namespace.
+            $shortclassname = str_replace("_", "", $shortclassname); // Remove underscroll.
             $overrideconditionsarray[$overridecondition->id] =
-                get_string('bo_cond_' . $shortclassname, 'mod_booking');
+                get_string('bocond' . $shortclassname, 'mod_booking');
         }
 
         // Check for json conditions that might have been saved before.
@@ -229,8 +285,8 @@ class booking_time implements bo_condition {
                         if ($jsoncondition->id != MOD_BOOKING_BO_COND_BOOKING_TIME
                             && isset($currentcondition->overridable)
                             && ($currentcondition->overridable == true)) {
-                            $overrideconditionsarray[$jsoncondition->id] = get_string('bo_cond_' .
-                                $jsoncondition->name, 'mod_booking');
+                            $overrideconditionsarray[$jsoncondition->id] = get_string('bocond' .
+                                str_replace("_", "", $jsoncondition->name), 'mod_booking');
                         }
                     }
                 }
@@ -276,8 +332,13 @@ class booking_time implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        $userid = 0, $full = false, $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        $userid = 0,
+        $full = false,
+        $not = false,
+        bool $fullwidth = true
+    ): array {
 
         $label = $this->get_description_string(false, $full, $settings);
 
@@ -292,12 +353,20 @@ class booking_time implements bo_condition {
      * @param booking_option_settings $settings
      * @return string
      */
-    private function get_description_string($isavailable, $full, $settings) {
+    private function get_description_string(bool $isavailable, bool $full, booking_option_settings $settings) {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
         if ($isavailable) {
-            $description = get_string('bo_cond_booking_time_available', 'mod_booking');
+            $description = get_string('bocondbookingtimeavailable', 'mod_booking');
         } else {
             // Localized time format.
-            switch(current_language()) {
+            switch (current_language()) {
                 case 'de':
                     $timeformat = "d.m.Y, H:i";
                     break;
@@ -307,24 +376,24 @@ class booking_time implements bo_condition {
             }
 
             // Get opening and closing time from option settings.
-            list($openingtime, $closingtime) = $this->get_booking_opening_and_closing_time($settings);
+            [$openingtime, $closingtime] = $this->get_booking_opening_and_closing_time($settings);
 
             $description = '';
             if (!empty($openingtime) && time() < $openingtime) {
                 $openingdatestring = date($timeformat, $openingtime);
                 $description .= $full ?
-                    get_string('bo_cond_booking_opening_time_full_not_available', 'mod_booking', $openingdatestring) :
-                    get_string('bo_cond_booking_opening_time_not_available', 'mod_booking', $openingdatestring);
+                    get_string('bocondbookingopeningtimefullnotavailable', 'mod_booking', $openingdatestring) :
+                    get_string('bocondbookingopeningtimenotavailable', 'mod_booking', $openingdatestring);
             }
             if (!empty($closingtime) && time() > $closingtime) {
                 $closingdatestring = date($timeformat, $closingtime);
                 $description .= $full ?
-                    get_string('bo_cond_booking_closing_time_full_not_available', 'mod_booking', $closingdatestring) :
-                    get_string('bo_cond_booking_closing_time_not_available', 'mod_booking', $closingdatestring);
+                    get_string('bocondbookingclosingtimefullnotavailable', 'mod_booking', $closingdatestring) :
+                    get_string('bocondbookingclosingtimenotavailable', 'mod_booking', $closingdatestring);
             }
             // Fallback: If description is still empty, we still want to show that it's not available.
             if (empty($description)) {
-                $description = get_string('bo_cond_booking_time_not_available', 'mod_booking');
+                $description = get_string('bocondbookingtimenotavailable', 'mod_booking');
             }
         }
 
@@ -343,7 +412,6 @@ class booking_time implements bo_condition {
             $openingtime = $settings->bookingopeningtime ?? null;
             $closingtime = $settings->bookingclosingtime ?? null;
         } else {
-
             $jsonstring = $settings->availability ?? '';
 
             $jsonobject = json_decode($jsonstring);
@@ -365,7 +433,7 @@ class booking_time implements bo_condition {
     // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
     /*public function get_condition_object_for_json(stdClass $fromform): stdClass {
 
-        $conditionobject = new stdClass;
+        $conditionobject = new stdClass();
 
         // Booking time is a special case, bookingopeningtime and bookingclosingtime are stored in extra DB fields not in JSON!
 

@@ -45,9 +45,21 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class alreadybooked implements bo_condition {
-
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_ALREADYBOOKED;
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = false;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -87,7 +99,6 @@ class alreadybooked implements bo_condition {
 
         // If the user is not yet booked we return true.
         if (!isset($bookinginformation['iambooked'])) {
-
             $isavailable = true;
         }
 
@@ -97,6 +108,18 @@ class alreadybooked implements bo_condition {
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -139,7 +162,7 @@ class alreadybooked implements bo_condition {
 
         $isavailable = $this->is_available($settings, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string($isavailable, $full, $settings);
 
         return [$isavailable, $description, MOD_BOOKING_BO_PREPAGE_NONE, MOD_BOOKING_BO_BUTTON_JUSTMYALERT];
     }
@@ -181,12 +204,40 @@ class alreadybooked implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
-        $label = $this->get_description_string(false, $full);
+        $link = '';
+        if (
+            get_config('booking', 'linktomoodlecourseonbookedbutton')
+            && !empty($settings->courseid)
+        ) {
+            $label = get_string('coursestart', 'mod_booking');
+            $url = new \moodle_url('/course/view.php', ['id' => $settings->courseid]);
+            $link = $url->out();
+        } else {
+            $label = $this->get_description_string(false, $full, $settings);
+        }
 
-        return bo_info::render_button($settings, $userid, $label, 'alert alert-success', true, $fullwidth, 'alert', 'option');
+        return bo_info::render_button(
+            $settings,
+            $userid,
+            $label,
+            $link !== '' ? 'bookinglinkbutton btn btn-primary' : 'alert alert-success',
+            false,
+            $fullwidth,
+            'alert',
+            'option',
+            true,
+            '',
+            $link,
+            'fa-play'
+        );
     }
 
     /**
@@ -194,15 +245,24 @@ class alreadybooked implements bo_condition {
      *
      * @param bool $isavailable
      * @param bool $full
+     * @param booking_option_settings $settings
      * @return string
      */
-    private function get_description_string($isavailable, $full) {
+    private function get_description_string(bool $isavailable, bool $full, booking_option_settings $settings) {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
         if ($isavailable) {
-            $description = $full ? get_string('bo_cond_alreadybooked_full_available', 'mod_booking') :
-                get_string('bo_cond_alreadybooked_available', 'mod_booking');
+            $description = $full ? get_string('bocondalreadybookedfullavailable', 'mod_booking') :
+                get_string('bocondalreadybookedavailable', 'mod_booking');
         } else {
-            $description = $full ? get_string('bo_cond_alreadybooked_full_not_available', 'mod_booking') :
-                get_string('bo_cond_alreadybooked_not_available', 'mod_booking');
+            $description = $full ? get_string('bocondalreadybookedfullnotavailable', 'mod_booking') :
+                get_string('bocondalreadybookednotavailable', 'mod_booking');
         }
         return $description;
     }

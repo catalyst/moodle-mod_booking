@@ -28,6 +28,8 @@ use mod_booking\bo_actions\actions_info;
 use mod_booking\booking_option;
 use mod_booking\booking_option_settings;
 use mod_booking\option\field_base;
+use mod_booking\option\fields_info;
+use mod_booking\singleton_service;
 use MoodleQuickForm;
 use stdClass;
 
@@ -64,7 +66,7 @@ class actions extends field_base {
      * An int value to define if this field is standard or used in a different context.
      * @var array
      */
-    public static $fieldcategories = []; // MOD_BOOKING_OPTION_FIELD_STANDARD.
+    public static $fieldcategories = [MOD_BOOKING_OPTION_FIELD_STANDARD]; // MOD_BOOKING_OPTION_FIELD_STANDARD.
 
     /**
      * Additionally to the classname, there might be others keys which should instantiate this class.
@@ -84,14 +86,14 @@ class actions extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         // In the actions, we don't actually save, but we want to pass on json, if there is any.
         // But we don't want to overwrite already altered values.
@@ -101,25 +103,32 @@ class actions extends field_base {
         } else {
             $boactions = $formdata->boactions ?? [];
         }
-
         booking_option::add_data_to_json($newoption, 'boactions', $boactions);
 
-        return '';
+        // Changes will only be reported in a separately triggered changes event ...
+        // ... (in action class for save or update, in actions_info for deletion).
+        return [];
     }
 
     /**
      * Instance form definition
-     *
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Actions are not yet finished - so we hide them for now.
         // Add booking actions mform elements.
-        // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
         actions_info::add_actions_to_mform($mform, $formdata);
     }
 

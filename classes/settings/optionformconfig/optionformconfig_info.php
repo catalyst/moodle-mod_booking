@@ -188,14 +188,18 @@ class optionformconfig_info {
      *
      */
     public static function return_configured_fields_for_capability(int $contextid, string $capability) {
-
-        if (isset(self::$arrayoffieldsets[$contextid][$capability])) {
+        if (empty($capability)) {
+            $json = '[]';
+        } else if (isset(self::$arrayoffieldsets[$contextid][$capability])) {
             $json = self::$arrayoffieldsets[$contextid][$capability];
-        } else if ($record = self::return_capabilities_from_db($contextid, $capability)) {
-            $json = $record->json;
-            self::$arrayoffieldsets[$contextid][$capability] = $json;
         } else {
-            // If we don't find a record yet, we create the standard fields.
+
+            // If we find a record in DB, we use it.
+            if ($record = self::return_capabilities_from_db($contextid, $capability)) {
+                $json = $record->json;
+                self::$arrayoffieldsets[$contextid][$capability] = $json;
+            }
+            // But we still check if we need to add fields.
             // We get really all fields, without restriction.
             $fields = core_component::get_component_classes_in_namespace(
                 "mod_booking",
@@ -215,7 +219,26 @@ class optionformconfig_info {
                 array_keys($fields));
 
             usort($fields, fn($a, $b) => $a->id > $b->id ? 1 : -1);
+
             $json = json_encode($fields);
+
+            if (!empty($record) && ($record->json !== $json)) {
+                $storedfields = json_decode($record->json);
+
+                $newfields = [];
+
+                foreach ($fields as $value) {
+
+                    $filteredarray = array_filter($storedfields, fn($a) => $a->id == $value->id);
+                    if (!empty($filteredarray)) {
+                        $storefield = reset($filteredarray);
+                        $newfields[] = $storefield;
+                    } else {
+                        $newfields[] = $value;
+                    }
+                }
+                $json = json_encode($newfields);
+            }
         }
 
         return [
@@ -246,7 +269,7 @@ class optionformconfig_info {
         $fields = json_decode($record['json']);
         $filteredfields = array_filter($fields, fn($a) => $a->id == MOD_BOOKING_OPTION_FIELD_COSTUMFIELDS ? true : false);
         $customfields = reset($filteredfields);
-        $uncheckedfields = array_map(fn($a) => $a->checked != 1 ? $a->id : null, (array)$customfields->subfields);
+        $uncheckedfields = array_map(fn($a) => $a->checked != 1 ? $a->shortname : null, (array)$customfields->subfields);
 
         return $uncheckedfields;
     }

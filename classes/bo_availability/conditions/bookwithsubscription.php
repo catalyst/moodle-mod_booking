@@ -24,7 +24,7 @@
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
- namespace mod_booking\bo_availability\conditions;
+namespace mod_booking\bo_availability\conditions;
 
 use mod_booking\bo_availability\bo_condition;
 use mod_booking\bo_availability\bo_info;
@@ -53,9 +53,21 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class bookwithsubscription implements bo_condition {
-
     /** @var int $id Standard Conditions have hardcoded ids. */
     public $id = MOD_BOOKING_BO_COND_BOOKWITHSUBSCRIPTION;
+
+    /** @var bool $overwrittenbybillboard Indicates if the condition can be overwritten by the billboard. */
+    public $overwrittenbybillboard = false;
+
+    /**
+     * Get the condition id.
+     *
+     * @return int
+     *
+     */
+    public function get_id(): int {
+        return $this->id;
+    }
 
     /**
      * Needed to see if class can take JSON.
@@ -95,33 +107,39 @@ class bookwithsubscription implements bo_condition {
             $profilefield = get_config('booking', 'bookwithcreditsprofilefield');
 
             if (!empty($profilefield) && $settings->credits > 0) {
-
                 // If the user is not yet booked we return true.
                 if (empty($settings->jsonobject->useprice)) {
                     // When we use credits, we can't book without.
                     $isavailable = false;
                 } else {
-
                     if (!empty($userid) && $USER->id != $userid) {
                         $user = singleton_service::get_instance_of_user($userid);
                         profile_load_custom_fields($user);
-
                     } else {
                         $user = $USER;
                     }
 
                     $key = "profile_field_" . $profilefield;
                     if ($settings->credits < $user->{$key}) {
-
                         $isavailable = false;
                     }
                 }
-
             }
-
         }
 
         return $isavailable;
+    }
+
+    /**
+     * Each function can return additional sql.
+     * This will be used if the conditions should not only block booking...
+     * ... but actually hide the conditons alltogether.
+     *
+     * @return array
+     */
+    public function return_sql(): array {
+
+        return ['', '', '', [], ''];
     }
 
     /**
@@ -164,7 +182,7 @@ class bookwithsubscription implements bo_condition {
 
         $isavailable = $this->is_available($settings, $userid, $not);
 
-        $description = $this->get_description_string($isavailable, $full);
+        $description = $this->get_description_string($isavailable, $full, $settings);
 
         return [$isavailable, $description, MOD_BOOKING_BO_PREPAGE_BOOK, MOD_BOOKING_BO_BUTTON_MYBUTTON];
     }
@@ -203,7 +221,7 @@ class bookwithsubscription implements bo_condition {
 
         $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
 
-        list($template, $data2) = booking_bookit::render_bookit_template_data($settings, 0, false);
+        [$template, $data2] = booking_bookit::render_bookit_template_data($settings, 0, false);
         $data2 = reset($data2);
         $template = reset($template);
 
@@ -250,8 +268,13 @@ class bookwithsubscription implements bo_condition {
      * @param bool $fullwidth
      * @return array
      */
-    public function render_button(booking_option_settings $settings,
-        int $userid = 0, bool $full = false, bool $not = false, bool $fullwidth = true): array {
+    public function render_button(
+        booking_option_settings $settings,
+        int $userid = 0,
+        bool $full = false,
+        bool $not = false,
+        bool $fullwidth = true
+    ): array {
 
         global $USER;
 
@@ -276,8 +299,18 @@ class bookwithsubscription implements bo_condition {
             $label = get_string('bookwithcredit', 'mod_booking', $settings->credits);
         }
 
-        return bo_info::render_button($settings, $userid, $label, 'btn btn-success mt-1 mb-1', false, $fullwidth,
-            'button', 'option', false, 'noforward');
+        return bo_info::render_button(
+            $settings,
+            $userid,
+            $label,
+            'btn btn-success mt-1 mb-1',
+            false,
+            $fullwidth,
+            'button',
+            'option',
+            false,
+            'noforward'
+        );
     }
 
     /**
@@ -285,9 +318,18 @@ class bookwithsubscription implements bo_condition {
      *
      * @param bool $isavailable
      * @param bool $full
+     * @param booking_option_settings $settings
      * @return string
      */
-    private function get_description_string($isavailable, $full): string {
+    private function get_description_string($isavailable, $full, $settings): string {
+
+        if (
+            !$isavailable
+            && $this->overwrittenbybillboard
+            && !empty($desc = bo_info::apply_billboard($this, $settings))
+        ) {
+            return $desc;
+        }
 
         // In this case, we dont differentiate between availability, because when it blocks...
         // ... it just means that it can be booked. Blocking has a different functionality here.

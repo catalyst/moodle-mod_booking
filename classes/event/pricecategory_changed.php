@@ -13,6 +13,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
 /**
  * The pricecategory changed event.
  *
@@ -49,7 +50,7 @@ class pricecategory_changed extends \core\event\base {
      * @return string
      */
     public static function get_name() {
-        return get_string('pricecategory_changed', 'mod_booking');
+        return get_string('pricecategorychanged', 'mod_booking');
     }
 
     /**

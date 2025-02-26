@@ -42,7 +42,6 @@ use moodle_url;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class deleteruleform extends dynamic_form {
-
     /**
      * {@inheritdoc}
      * @see moodleform::definition()
@@ -58,7 +57,7 @@ class deleteruleform extends dynamic_form {
         }
 
         $mform->addElement('html', '<div><p>'
-            . get_string('deletebookingrule_confirmtext', 'mod_booking')
+            . get_string('deletebookingruleconfirmtext', 'mod_booking')
             . '</p><p class="text-danger font-weight-bold">'
             . $ajaxformdata['name']
             . '</p></div>');
@@ -85,7 +84,6 @@ class deleteruleform extends dynamic_form {
 
         $data = (object) $this->_ajaxformdata;
         $this->set_data($data);
-
     }
 
     /**
@@ -124,6 +122,19 @@ class deleteruleform extends dynamic_form {
      * @return void
      */
     protected function check_access_for_dynamic_submission(): void {
-        require_capability('moodle/site:config', context_system::instance());
+
+        $customdata = $this->_customdata;
+        $ajaxformdata = $this->_ajaxformdata;
+
+        $contextid = $ajaxformdata['contextid'] ?? $customdata['contextid'];
+
+        if (empty($contextid)) {
+            // Use system context as fallback.
+            $context = context_system::instance();
+        } else {
+            $context = context::instance_by_id($contextid);
+        }
+
+        require_capability('mod/booking:editbookingrules', $context);
     }
 }

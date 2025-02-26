@@ -89,7 +89,7 @@ class bookit_price implements renderable, templatable {
         if ($context && !isloggedin()) {
 
             $this->context = $context;
-            $this->priceitems = price::get_prices_from_cache_or_db('option', $settings->id);
+            $this->priceitems = price::get_prices_from_cache_or_db('option', $settings->id, $userid);
             // When we render for guest, we don't need the rest.
             return;
         }
@@ -113,7 +113,7 @@ class bookit_price implements renderable, templatable {
                     if ($this->priceitem = price::get_price('option', $settings->id, $buyforuser)) {
 
                         $cartitem = new cartitem($settings->id,
-                                         $settings->text,
+                                         $settings->get_title_with_prefix(),
                                          $this->priceitem['price'],
                                          $this->priceitem['currency'],
                                          'mod_booking',

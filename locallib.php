@@ -210,8 +210,8 @@ class booking_potential_user_selector extends booking_user_selector_base {
         }
 
         // If true, anyone can be booked - even users not enrolled.
-        // Only SITE admins are allowed to do this!
-        if ($bookanyone && is_siteadmin()) {
+        // To allow this, bookanyone has to be given.
+        if ($bookanyone && has_capability('mod/booking:bookanyone', context_module::instance($this->cm->id))) {
             $enrolledsqlpart = '';
         } else {
             $enrolledsqlpart = "AND u.id IN (
@@ -512,18 +512,20 @@ function optiondate_duplicatecustomfields($oldoptiondateid, $newoptiondateid) {
 
 /**
  * Helper function to update user calendar events after an option or optiondate (a session of a booking option) has been changed.
+ *
  * @param int $optionid
- * @param stdClass $optiondate
  * @param int $cmid
+ * @param ?stdClass $optiondate
+ *
  */
-function option_optiondate_update_event(int $optionid, stdClass $optiondate = null, int $cmid) {
+function option_optiondate_update_event(int $optionid, int $cmid, ?stdClass $optiondate = null) {
     global $DB, $USER;
 
     $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
 
     // We either do this for option or optiondate
     // different way to retrieve the right events.
-    if ($optiondate) {
+    if ($optiondate && !empty($settings->id)) {
         // Check if we have already associated userevents.
         if (!isset($optiondate->eventid) || (!$event = $DB->get_record('event', ['id' => $optiondate->eventid]))) {
 

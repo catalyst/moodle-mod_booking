@@ -29,15 +29,15 @@
         "lastname" : "X",
         "email" : "a.x@example.com",
         "status" : "x",
-        "link" : "http://localhost:8010/user/profile.php?id=118"
+        "userprofilelink" : "http://localhost:8010/user/profile.php?id=118"
     }
 }}
- 
+
 <div>
-    <a href="{{link}}">
-        <h5 class="mb-1">
+    <a href="{{userprofilelink}}" target="_blank">
+        <div class="mb-1 h6">
             {{firstname}} {{lastname}}
-        </h5>
+        </div>
     </a>
 </div>
 <p class="mb-1">{{email}}</p>

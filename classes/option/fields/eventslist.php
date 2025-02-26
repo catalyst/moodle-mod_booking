@@ -86,16 +86,16 @@ class eventslist extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
-        return '';
+        return [];
     }
 
     /**
@@ -112,6 +112,8 @@ class eventslist extends field_base {
             $formdata['id'] ?? $formdata['optionid'],
             ['\mod_booking\event\bookingoption_updated']
         );
+        $data->icon = 'fa fa-wrench';
+        $data->title = get_string('showrecentupdates', 'mod_booking');
 
         $html = $OUTPUT->render_from_template('mod_booking/eventslist', (array) $data);
         $mform->addElement('static', 'eventslist', '', $html);

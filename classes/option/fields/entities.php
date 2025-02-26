@@ -28,6 +28,7 @@ use local_entities\entitiesrelation_handler;
 use mod_booking\booking_option_settings;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
+use mod_booking\singleton_service;
 use MoodleQuickForm;
 use stdClass;
 
@@ -84,14 +85,14 @@ class entities extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         if (class_exists('local_entities\entitiesrelation_handler')) {
 
@@ -133,7 +134,7 @@ class entities extends field_base {
                 }
             }
         }
-        return '';
+        return [];
     }
 
     /**
@@ -141,9 +142,17 @@ class entities extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Add entities.
         if (class_exists('local_entities\entitiesrelation_handler')) {
@@ -156,7 +165,7 @@ class entities extends field_base {
             // ...cannot be put directly into instance_form_definition of entitiesrelation_handler.
             // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
             /*$mform->addElement('advcheckbox', 'er_saverelationsforoptiondates',
-                get_string('er_saverelationsforoptiondates', 'mod_booking'));*/
+                get_string('ersaverelationsforoptiondates', 'mod_booking'));*/
 
             // Checkbox "Save entity for each date too" must be checked by default.
             // $mform->setDefault('er_saverelationsforoptiondates', 1);
@@ -168,7 +177,7 @@ class entities extends field_base {
             // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
             /* if (entitiesrelation_handler::option_has_dates_with_entity_outliers($optionid)) {
                 $mform->addElement('advcheckbox', 'confirm:er_saverelationsforoptiondates',
-                    get_string('confirm:er_saverelationsforoptiondates', 'mod_booking'));
+                    get_string('confirm:ersaverelationsforoptiondates', 'mod_booking'));
             } */
         }
     }
@@ -198,11 +207,12 @@ class entities extends field_base {
      * @param stdClass $formdata
      * @param stdClass $option
      * @param int $index
-     * @return void
+     * @return array
      * @throws \dml_exception
      */
-    public static function save_data(stdClass &$formdata, stdClass &$option, int $index = 0) {
+    public static function save_data(stdClass &$formdata, stdClass &$option, int $index = 0): array {
 
+        $changes = [];
         // This is to save entity relation data.
         // The id key has to be set to option id.
         if (class_exists('local_entities\entitiesrelation_handler')
@@ -210,7 +220,39 @@ class entities extends field_base {
 
             $erhandler = new entitiesrelation_handler('mod_booking', 'option');
             $erhandler->instance_form_save($formdata, $option->id, $index);
+
+            // See if entities are excluded from tracking changes.
+            if (in_array('entities', MOD_BOOKING_CLASSES_EXCLUDED_FROM_CHANGES_TRACKING)) {
+                return [];
+            };
+            // Compare current formdata to previously saved formdata (settings).
+            $settings = singleton_service::get_instance_of_booking_option_settings($formdata->id);
+            $key = LOCAL_ENTITIES_FORM_ENTITYID . "0";
+            $oldentity = $settings->entity;
+            $newentityid = $formdata->$key;
+
+            if (isset($oldentity['id']) && $oldentity['id'] != $newentityid
+                || (!empty($newentityid) && !isset($oldentity['id']))
+                || (!isset($newentityid) && isset($oldentity['id']))) {
+
+                if (!empty($newentityid)) {
+                    $newentity = singleton_service::get_entity_by_id($newentityid)[$newentityid];
+                } else {
+                    $newentity = (object)[
+                        'id' => 0,
+                        'name' => get_string('entitydeleted', 'mod_booking'),
+                    ];
+                }
+
+                $changes = [ 'changes' => [
+                        'fieldname' => 'entities',
+                        'oldvalue' => $oldentity,
+                        'newvalue' => $newentity,
+                    ],
+                ];
+            }
         }
+        return $changes;
     }
 
     /**
@@ -255,5 +297,35 @@ class entities extends field_base {
                 $data->er_saverelationsforoptiondates = 1;
             }
         }
+    }
+
+    /**
+     * Return values for bookingoption_updated event.
+     *
+     * @param array $changes
+     *
+     * @return array
+     *
+     */
+    public function get_changes_description(array $changes): array {
+        $oldentity = $changes['oldvalue'] ?? [];
+        $newentity = $changes['newvalue'] ?? [];
+
+        $fieldname = get_string($changes['fieldname'], 'booking');
+        $infotext = get_string('changeinfochanged', 'booking', $fieldname);
+        $oldvalue = isset($oldentity['id']) ? get_string('changesinentity', 'mod_booking', $oldentity) : '';
+        $newvalue = isset($newentity['id']) ? get_string('changesinentity', 'mod_booking', $newentity) : '';
+
+        $returnarray = [
+            'oldvalue' => $oldvalue,
+            'newvalue' => $newvalue,
+            'fieldname' => get_string($changes['fieldname'], 'booking'),
+        ];
+
+        if (empty($oldvalue) && empty($newvalue)) {
+            $returnarray['info'] = $infotext;
+        }
+
+        return $returnarray;
     }
 }

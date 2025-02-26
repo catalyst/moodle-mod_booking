@@ -85,20 +85,23 @@ class waitforconfirmation extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
-     * @return string // If no warning, empty string.
+     * @param ?mixed $returnvalue
+     * @return array// If no warning, empty array.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         if (isset($formdata->waitforconfirmation)) {
             booking_option::add_data_to_json($newoption, "waitforconfirmation", $formdata->waitforconfirmation);
         }
-
-        return '';
+        $instance = new waitforconfirmation();
+        $mockdata = new stdClass();
+        $mockdata->id = $formdata->id;
+        $changes = $instance->check_for_changes($formdata, $instance, $mockdata);
+        return $changes;
     }
 
     /**
@@ -106,14 +109,24 @@ class waitforconfirmation extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         $optionid = $formdata['id'];
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         $mform->addElement('advcheckbox', 'waitforconfirmation', get_string('waitforconfirmation', 'mod_booking'));
     }

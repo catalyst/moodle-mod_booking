@@ -83,14 +83,14 @@ class notificationtext extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
-     * @return string // If no warning, empty string.
+     * @param ?mixed $returnvalue
+     * @return array // If no changes, empty array.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         $key = fields_info::get_class_name(static::class);
         $value = $formdata->{$key} ?? null;
@@ -108,8 +108,11 @@ class notificationtext extends field_base {
             $newoption->notificationtextformat = FORMAT_HTML;
         }
 
-        // We can return an warning message here.
-        return '';
+        $instance = new notificationtext();
+        $changes = $instance->check_for_changes($formdata, $instance);
+
+        // We can return changes here.
+        return $changes;
     }
 
     /**
@@ -117,12 +120,22 @@ class notificationtext extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
         $mform->addElement('editor', 'notificationtext', get_string('notificationtext', 'mod_booking'));
         $mform->setType('notificationtext', PARAM_CLEANHTML);

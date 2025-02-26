@@ -39,7 +39,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class teachers extends field_base {
-
     /**
      * This ID is used for sorting execution.
      * @var int
@@ -86,16 +85,24 @@ class teachers extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null
+    ): array {
 
-        return parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+        parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+
+        $instance = new teachers();
+        $mockclass = new stdClass();
+        $mockclass->id = $formdata->id ?? 0;
+        $changes = $instance->check_for_changes($formdata, $instance, $mockclass, 'teachersforoption');
+
+        return $changes;
     }
 
     /**
@@ -103,9 +110,17 @@ class teachers extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         global $CFG;
 
@@ -127,7 +142,6 @@ class teachers extends field_base {
             $teacherhandler = new teachers_handler($data->id);
             $teacherhandler->set_data($data);
         } else {
-
             // This Logic is linked to the webservice importer functionality.
             // If we are currently importing, we check the mergeparam.
             // We might want to add teachers instead of replacing them.
@@ -135,9 +149,10 @@ class teachers extends field_base {
             // ... because on importing, we want it to fail, if teacher is not found.
             $teacherids = teachers_handler::get_teacherids_from_form($data, true);
 
-            if (!empty($data->importing)
-                && (!empty($data->mergeparam))) {
-
+            if (
+                !empty($data->importing)
+                && (!empty($data->mergeparam))
+            ) {
                 if ($data->mergeparam > 1) {
                     $oldteacherids = $settings->teacherids;
                     $teacherids = array_merge($oldteacherids, $teacherids);
@@ -145,21 +160,22 @@ class teachers extends field_base {
             }
             $data->teachersforoption = $teacherids;
         }
-
     }
 
     /**
      * Save data
      * @param stdClass $data
      * @param stdClass $option
-     * @return void
+     * @return array
      * @throws \dml_exception
      */
-    public static function save_data(stdClass &$data, stdClass &$option) {
+    public static function save_data(stdClass &$data, stdClass &$option): array {
+
+        $changes = [];
 
         $teacherhandler = new teachers_handler($data->id);
         $teacherhandler->save_from_form($data);
+
+        return $changes;
     }
 }
-
-

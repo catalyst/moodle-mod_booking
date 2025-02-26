@@ -69,7 +69,7 @@ class page_allteachers implements renderable, templatable {
      * @return array
      */
     public function export_for_template(renderer_base $output) {
-        global $PAGE, $USER;
+        global $PAGE, $USER, $CFG;
 
         $returnarray = [];
 
@@ -90,13 +90,21 @@ class page_allteachers implements renderable, templatable {
             // Here we can load custom userprofile fields and add the to the array to render.
             // Right now, we just use a few standard pieces of information.
 
+            $shortdescription = strip_tags(format_text($teacher->description, $teacher->descriptionformat));
+            $shortdescription = substr($shortdescription, 0, 300);
+
             $teacherarr = [
                 'teacherid' => $teacher->id,
                 'firstname' => $teacher->firstname,
                 'lastname' => $teacher->lastname,
                 'orderletter' => substr($teacher->lastname, 0, 1), // First letter of the teacher's last name.
-                'description' => format_text($teacher->description, $teacher->descriptionformat),
+                'description' => $shortdescription,
+
             ];
+
+            if (strlen(strip_tags($teacher->description ?? '')) > 300) {
+                $teacherarr['descriptionlong'] = format_text($teacher->description, $teacher->descriptionformat);
+            }
 
             if ($teacher->picture) {
                 $picture = new \user_picture($teacher);
@@ -126,8 +134,19 @@ class page_allteachers implements renderable, templatable {
                 $teacherarr['email'] = $teacher->email;
             }
 
-            if (page_teacher::teacher_messaging_is_possible($teacher->id)) {
-                $teacherarr['messagingispossible'] = true;
+            if (!empty($CFG->messaging)) {
+                if (page_teacher::teacher_messaging_is_possible($teacher->id) ||
+                    get_config('booking', 'alwaysenablemessaging')
+                ) {
+                    $teacherarr['messagingispossible'] = true;
+                }
+            } else {
+                $teacherarr['messagesdeactivated'] = true;
+            }
+
+            if (has_capability('mod/booking:editteacherdescription', context_system::instance())) {
+                $url = new moodle_url('/user/editadvanced.php', ['id' => $teacher->id]);
+                $teacherarr['profileediturl'] = $url->out(false);
             }
 
             $link = new moodle_url('/mod/booking/teacher.php', ['teacherid' => $teacher->id]);

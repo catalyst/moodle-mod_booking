@@ -1,0 +1,58 @@
+{{!
+	This file is part of Moodle - http://moodle.org/
+
+	Moodle is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	Moodle is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_booking/report/option
+
+    Classes required for JS:
+    * none
+
+    Data attributes required for JS:
+    * data-region
+
+    Example context (json):
+    {
+        "titleprefix" : "123",
+		"title" : "Scuba Diving",
+		"id": "191",
+		"optionlink" : "http://127.0.0.1/mod/booking/view.php?id=12&id=187&whichview=showonlyone",
+		"instancename" : "Winter semester 2024",
+		"instancelink" : "https://127.0.0.1/mod/booking/view.php?id=12"
+    }
+}}
+<div class="mod-booking-report-option ml-3">
+	<div>
+		<div class="h6 mb-1">
+			<a href="{{report2link}}" target="_blank">
+				<i class="fa fa-fw fa-ticket" aria-hidden="true"></i>&nbsp;{{#titleprefix}}{{.}} - {{/titleprefix}}{{title}}
+			</a>&nbsp;
+			<a href="{{optionlink}}" target="_blank">
+				<i class="fa fa-fw fa-external-link" aria-hidden="true"></i>
+			</a>
+			<span class="ml-1"><a class="btn btn-link btn-sm" data-toggle="collapse" href="#collapseoptionshortinfo-{{id}}"
+				role="button" aria-expanded="false" aria-controls="collapseoptionshortinfo-{{id}}">
+				<i class="fa fa-chevron-down" aria-hidden="true"></i>
+			</a></span>
+		</div>
+	</div>
+	<div class="mb-1 collapse" id="collapseoptionshortinfo-{{id}}">
+		<div class="mod-booking-report-option-teachers">{{{teachers}}}</div>
+		<div class="mod-booking-report-option-instance">
+			<i class="fa fa-fw fa-sm fa-calendar-check-o text-gray" aria-hidden="true"></i>&nbsp;
+			<a href="{{instancelink}}" target="_blank">{{instancename}}</a>
+		</div>
+	</div>
+</div>

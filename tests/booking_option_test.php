@@ -28,13 +28,15 @@ namespace mod_booking;
 
 use advanced_testcase;
 use coding_exception;
-use mod_booking\option\dates_handler;
-use mod_booking\price;
 use mod_booking_generator;
-use context_course;
+use mod_booking\local\connectedcourse;
+use mod_booking\option\dates_handler;
+use local_entities\entitiesrelation_handler;
+use context_system;
+use context_module;
+use core_course_category;
 use stdClass;
-use mod_booking\utils\csv_import;
-use mod_booking\importer\bookingoptionsimporter;
+
 
 /**
  * Class handling tests for booking options.
@@ -44,45 +46,253 @@ use mod_booking\importer\bookingoptionsimporter;
  * @copyright 2023 Wunderbyte GmbH <info@wunderbyte.at>
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class booking_option_test extends advanced_testcase {
-
+final class booking_option_test extends advanced_testcase {
     /**
      * Tests set up.
      */
     public function setUp(): void {
+        parent::setUp();
         $this->resetAfterTest();
     }
 
     /**
-     * Tear Down.
-     *
-     * @return void
-     *
+     * Mandatory clean-up after each test.
      */
     public function tearDown(): void {
+        parent::tearDown();
+        // Mandatory clean-up.
+        singleton_service::destroy_instance();
+    }
+
+    /**
+     * Test update of bookig option and tracking changes.
+     *
+     * @covers \mod_booking\event\teacher_added
+     * @covers \mod_booking\booking_option::update
+     * @covers \mod_booking\option\field_base->check_for_changes
+     *
+     * @param array $bdata
+     * @throws \coding_exception
+     *
+     * @dataProvider booking_common_settings_provider
+     */
+    public function test_option_changes(array $bdata): void {
+
+        // Setup test data.
+        $course = $this->getDataGenerator()->create_course();
+        $users = [
+            ['username' => 'teacher1', 'firstname' => 'Teacher', 'lastname' => '1', 'email' => 'teacher1@example.com'],
+            ['username' => 'teacher2', 'firstname' => 'Teacher', 'lastname' => '2', 'email' => 'teacher2@sample.com'],
+            ['username' => 'student1', 'firstname' => 'Student', 'lastname' => '1', 'email' => 'student1@sample.com'],
+        ];
+        $user1 = $this->getDataGenerator()->create_user($users[0]);
+        $user2 = $this->getDataGenerator()->create_user($users[1]);
+        $user3 = $this->getDataGenerator()->create_user($users[2]);
+
+        $bdata['course'] = $course->id;
+        $bdata['bookingmanager'] = $user2->username;
+        unset($bdata['completion']);
+
+        $booking = $this->getDataGenerator()->create_module('booking', $bdata);
+
+        $this->setAdminUser();
+
+        $this->getDataGenerator()->enrol_user($user1->id, $course->id, 'editingteacher');
+        $this->getDataGenerator()->enrol_user($user2->id, $course->id, 'editingteacher');
+        $this->getDataGenerator()->enrol_user($user3->id, $course->id, 'student');
+
+        $record = new stdClass();
+        $record->bookingid = $booking->id;
+        $record->text = 'Option-created';
+        $record->chooseorcreatecourse = 1; // Reqiured.
+        $record->courseid = $course->id;
+        $record->description = 'Deskr-created';
+        $record->teachersforoption = $user1->username;
+        $record->optiondateid_0 = "0";
+        $record->daystonotify_0 = "0";
+        $record->coursestarttime_0 = strtotime('20 June 2050');
+        $record->courseendtime_0 = strtotime('20 July 2050');
+
+        /** @var mod_booking_generator $plugingenerator */
+        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
+        $option = $plugingenerator->create_option($record);
+
+        $this->setAdminUser();
+
+        // Trigger and capture events.
+        unset_config('noemailever');
+        ob_start();
+        $sink = $this->redirectEvents();
+
+        // Required to solve cahce issue.
+        singleton_service::destroy_user($user1->id);
+        singleton_service::destroy_user($user2->id);
+
+        // Update booking option.
+        $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
+        $record->id = $option->id;
+        $record->cmid = $settings->cmid;
+        $record->text = 'Option-updated';
+        $record->description = 'Deskr-updated';
+        $record->limitanswers = 1;
+        $record->maxanswers = 5;
+        $record->coursestarttime_0 = strtotime('10 April 2055');
+        $record->courseendtime_0 = strtotime('10 May 2055');
+        $record->teachersforoption = [$user2->id];
+        booking_option::update($record);
+
+        // Required to solve cahce issue.
+        singleton_service::destroy_booking_option_singleton($option->id);
+
+        $events = $sink->get_events();
+
+        $res = ob_get_clean();
+        $sink->close();
+
+        // Last event must be on the option update.
+        foreach ($events as $key => $event) {
+            if ($event instanceof bookingoption_updated) {
+                // Checking that the event contains the expected values.
+                $this->assertInstanceOf('mod_booking\event\bookingoption_updated', $event);
+                $modulecontext = context_module::instance($settings->cmid);
+                $this->assertEquals($modulecontext, $event->get_context());
+                $this->assertEventContextNotUsed($event);
+                $data = $event->get_data();
+                $this->assertIsArray($data);
+                $this->assertIsArray($data['other']['changes']);
+                $changes = $data['other']['changes'];
+                foreach ($changes as $change) {
+                    switch ($change['fieldname']) {
+                        case 'text':
+                            $this->assertEquals('Option-updated', $change['newvalue']);
+                            $this->assertEquals('Option-created', $change['oldvalue']);
+                            break;
+                        case 'description':
+                            $this->assertEquals('Deskr-updated', $change['newvalue']);
+                            $this->assertEquals('Deskr-created', $change['oldvalue']);
+                            break;
+                        case 'maxanswers':
+                            $this->assertEquals(5, $change['newvalue']);
+                            $this->assertEmpty($change['oldvalue']);
+                            break;
+                        case 'teachers':
+                            $this->assertStringContainsString('Teacher 2', $change['newvalue']);
+                            $this->assertStringContainsString('Teacher 1', $change['oldvalue']);
+                            break;
+                        case 'dates':
+                            $this->assertEquals(strtotime('10 April 2055'), $change['newvalue'][0]['coursestarttime']);
+                            $this->assertEquals(strtotime('10 May 2055'), $change['newvalue'][0]['courseendtime']);
+                            $this->assertEquals(strtotime('20 June 2050'), $change['oldvalue'][0]['coursestarttime']);
+                            $this->assertEquals(strtotime('20 July 2050'), $change['oldvalue'][0]['courseendtime']);
+                            break;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Test adding of entiy to the bookig option.
+     *
+     * @covers \mod_booking\booking_option::create
+     *
+     * @param array $bdata
+     * @throws \coding_exception
+     *
+     * @dataProvider booking_common_settings_provider
+     */
+    public function test_option_entities(array $bdata): void {
+
+        // Setup test data.
+        $course = $this->getDataGenerator()->create_course();
+        $users = [
+            ['username' => 'teacher1', 'firstname' => 'Teacher', 'lastname' => '1', 'email' => 'teacher1@example.com'],
+            ['username' => 'teacher2', 'firstname' => 'Teacher', 'lastname' => '2', 'email' => 'teacher2@sample.com'],
+            ['username' => 'student1', 'firstname' => 'Student', 'lastname' => '1', 'email' => 'student1@sample.com'],
+        ];
+        $user1 = $this->getDataGenerator()->create_user($users[0]);
+        $user2 = $this->getDataGenerator()->create_user($users[1]);
+        $user3 = $this->getDataGenerator()->create_user($users[2]);
+
+        $bdata['course'] = $course->id;
+        $bdata['bookingmanager'] = $user2->username;
+        unset($bdata['completion']);
+
+        $booking = $this->getDataGenerator()->create_module('booking', $bdata);
+
+        $this->setAdminUser();
+
+        $this->getDataGenerator()->enrol_user($user1->id, $course->id, 'editingteacher');
+        $this->getDataGenerator()->enrol_user($user2->id, $course->id, 'editingteacher');
+        $this->getDataGenerator()->enrol_user($user3->id, $course->id, 'student');
+
+        // Create entities.
+        $entitydata1 = [
+            'name' => 'Entity1',
+            'shortname' => 'entity1',
+            'description' => 'Ent1desc',
+        ];
+        $entitydata2 = [
+            'name' => 'Entity2',
+            'shortname' => 'entity2',
+            'description' => 'Ent2desc',
+        ];
+
+        /** @var local_entities_generator $plugingenerator */
+        $plugingenerator = self::getDataGenerator()->get_plugin_generator('local_entities');
+        $entityid1 = $plugingenerator->create_entities($entitydata1);
+        $entityid2 = $plugingenerator->create_entities($entitydata2);
+
+        $record = new stdClass();
+        $record->bookingid = $booking->id;
+        $record->text = 'Option-entity';
+        $record->chooseorcreatecourse = 1; // Reqiured.
+        $record->courseid = $course->id;
+        $record->description = 'Deskr-entity';
+        $record->teachersforoption = $user1->username;
+        $record->local_entities_entityid_0 = $entityid1; // Option entity.
+        $record->optiondateid_1 = "0";
+        $record->daystonotify_1 = "0";
+        $record->coursestarttime_1 = strtotime('20 June 2050');
+        $record->courseendtime_1 = strtotime('20 July 2050');
+        $record->er_saverelationsforoptiondates = 1;
+        $record->local_entities_entityarea_1 = "optiondate";
+        $record->local_entities_entityid_1 = $entityid2; // Option date entity.
+
+        /** @var mod_booking_generator $plugingenerator */
+        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
+        $option = $plugingenerator->create_option($record);
+
+        $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
+
+        $this->assertEquals($entitydata1['name'], $settings->location);
+
+        // Get entity for the 1st (and only) option's date and verify it.
+        $handler = new entitiesrelation_handler('mod_booking', $record->local_entities_entityarea_1);
+        $session = reset($settings->sessions);
+        $entity = $handler->get_instance_data($session->optiondateid);
+
+        $this->assertEquals($entitydata2['name'], $entity->name);
+        $this->assertEquals($entitydata2['description'], $entity->description);
+        $this->assertEquals($entity->instanceid, $session->optiondateid);
     }
 
     /**
      * Test delete responses.
      *
      * @covers ::delete_responses_activitycompletion
+     *
+     * @param array $bdata
      * @throws \coding_exception
      * @throws \dml_exception
+     *
+     * @dataProvider booking_common_settings_provider
      */
-    public function test_delete_responses_activitycompletion() {
+    public function test_delete_responses_activitycompletion(array $bdata): void {
         global $DB, $CFG;
 
         $CFG->enablecompletion = 1;
 
-        $bdata = ['name' => 'Test Booking 1', 'eventtype' => 'Test event', 'enablecompletion' => 1,
-            'bookedtext' => ['text' => 'text'], 'waitingtext' => ['text' => 'text'],
-            'notifyemail' => ['text' => 'text'], 'statuschangetext' => ['text' => 'text'],
-            'deletedtext' => ['text' => 'text'], 'pollurltext' => ['text' => 'text'],
-            'pollurlteacherstext' => ['text' => 'text'],
-            'notificationtext' => ['text' => 'text'], 'userleave' => ['text' => 'text'],
-            'bookingpolicy' => 'bookingpolicy', 'tags' => '', 'completion' => 2,
-            'showviews' => ['mybooking,myoptions,showall,showactive,myinstitution'],
-        ];
         // Setup test data.
         $course = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
 
@@ -93,13 +303,16 @@ class booking_option_test extends advanced_testcase {
 
         $bdata['course'] = $course->id;
         $bdata['bookingmanager'] = $user3->username;
+        $bdata['ratings'] = 3; // Option completed.
 
         $booking1 = $this->getDataGenerator()->create_module('booking', $bdata);
 
         $result = $DB->get_record_sql(
-                'SELECT cm.id, cm.course, cm.module, cm.instance, m.name
+            'SELECT cm.id, cm.course, cm.module, cm.instance, m.name
                 FROM {course_modules} cm LEFT JOIN {modules} m ON m.id = cm.module WHERE cm.course = ?
-                AND cm.completion > 0 LIMIT 1', [$course->id]);
+                AND cm.completion > 0 LIMIT 1',
+            [$course->id]
+        );
 
         $bdata['name'] = 'Test Booking 2';
         unset($bdata['completion']);
@@ -107,239 +320,368 @@ class booking_option_test extends advanced_testcase {
         $bdata['completionmodule'] = $result->id;
         $booking2 = $this->getDataGenerator()->create_module('booking', $bdata);
 
-        $this->setUser($user3);
         $this->setAdminUser();
 
         $this->getDataGenerator()->enrol_user($user1->id, $course->id);
         $this->getDataGenerator()->enrol_user($user2->id, $course->id);
         $this->getDataGenerator()->enrol_user($user3->id, $course->id);
 
-        $coursectx = context_course::instance($course->id);
-
         $record = new stdClass();
         $record->bookingid = $booking1->id;
         $record->text = 'Test option1';
+        $record->chooseorcreatecourse = 1; // Reqiured.
         $record->courseid = $course->id;
         $record->description = 'Test description';
+        $record->optiondateid_0 = "0";
+        $record->daystonotify_0 = "0";
+        $record->coursestarttime_0 = strtotime('now - 2 day');
+        $record->courseendtime_0 = strtotime('now + 1 day');
         $record->optiondateid_1 = "0";
         $record->daystonotify_1 = "0";
-        $record->coursestarttime_1 = 1703171160;
-        $record->courseendtime_1 = 1734793560;
-        $record->optiondateid_2 = "0";
-        $record->daystonotify_2 = "0";
-        $record->coursestarttime_2 = 1734793560;
-        $record->courseendtime_2 = 1735793560;
+        $record->coursestarttime_1 = strtotime('now + 2 day');
+        $record->courseendtime_1 = strtotime('now + 3 day');
 
         /** @var mod_booking_generator $plugingenerator */
         $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
         $option1 = $plugingenerator->create_option($record);
-        $record->bookingid = $booking2->id;
 
-        $cmb1 = get_coursemodule_from_instance('booking', $booking1->id);
+        // Required to solve cahce issue.
+        singleton_service::destroy_booking_option_singleton($option1->id);
 
-        $bookingoption1 = singleton_service::get_instance_of_booking_option($cmb1->id, $option1->id);
+        $bookingobj1 = singleton_service::get_instance_of_booking_by_bookingid($booking1->id);
+        $bookingsettings1 = singleton_service::get_instance_of_booking_settings_by_bookingid($bookingobj1->id);
+        $bookingoption1 = singleton_service::get_instance_of_booking_option($bookingsettings1->cmid, $option1->id);
+        $bookinganswers1 = booking_answers::get_instance_from_optionid($bookingoption1->id);
 
         $this->setUser($user1);
+        $this->assertEquals(false, $bookingoption1->can_rate());
+        $this->assertEquals(0, $bookinganswers1->is_activity_completed($user1->id));
+
+        // In this test, we book the user directly (option already started).
+        $this->setAdminUser();
+        $bookingoption1->user_submit_response($user1, 0, 0, 0, MOD_BOOKING_VERIFIED);
+
+        $this->setUser($user1);
+        $this->assertEquals(false, $bookingoption1->can_rate());
+
+        // In this test, we set completion to the user directly.
+        $this->setAdminUser();
+        $sink = $this->redirectEvents();
+        booking_activitycompletion([$user1->id], $booking1, $bookingsettings1->cmid, $bookingoption1->id);
+        $events = $sink->get_events();
+
+        // Mandatory to get updates on completion.
+        $bookinganswers1 = booking_answers::get_instance_from_optionid($bookingoption1->id);
+
+        // Verify completion.
+        $this->assertEquals(1, $bookinganswers1->is_activity_completed($user1->id));
+        // Verify can_rate.
+        $this->setUser($user1);
+        $this->assertEquals(true, $bookingoption1->can_rate());
+
+        // Delete responses and verivy absence of completion.
+        $this->setAdminUser();
+        $res = $bookingoption1->delete_responses_activitycompletion();
+        $bookinganswers1 = booking_answers::get_instance_from_optionid($bookingoption1->id);
+
+        // Verify absence completion and inability to rate from user's side.
+        $this->setUser($user1);
+        $this->assertEquals(0, $bookinganswers1->is_activity_completed($user1->id));
         $this->assertEquals(false, $bookingoption1->can_rate());
     }
 
     /**
-     * Test process_data of CSV import.
+     * Test enrol user and add to group.
      *
-     * @covers \csv_import->process_data
+     * @covers \booking_option->enrol_user
+     * @covers \local\connectedcourse
+     *
+     * @param array $bdata
      * @throws \coding_exception
      * @throws \dml_exception
+     *
+     * @dataProvider booking_common_settings_provider
      */
-    public function test_csv_import_process_data() {
-        $this->resetAfterTest();
-        // It is important to set timezone to have all dates correct!
-        $this->setTimezone('Europe/London');
+    public function test_course_connection_enrollemnt(array $bdata): void {
+        global $DB, $CFG;
 
-        // Setup course.
-        $course = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
+        $bdata['autoenrol'] = "1";
 
-        // Create user(s).
-        $useremails = ['teacher1@example.com', 'teacher2@example.com', 'user1@example.com'];
-        $userdata = new stdClass;
-        $userdata->email = $useremails[0];
-        $userdata->timezone = 'Europe/London';
-        $user1 = $this->getDataGenerator()->create_user($userdata); // Booking manager and teacher.
-        $userdata->email = $useremails[1];
-        $user2 = $this->getDataGenerator()->create_user($userdata); // Teacher.
-        $userdata->email = $useremails[2];
-        $user3 = $this->getDataGenerator()->create_user($userdata); // Student.
+        // Create a tag.
+        $tag1 = $this->getDataGenerator()->create_tag(['name' => 'optiontemplate', 'isstandard' => 1]);
 
-        // Create booking settings prior create booking module in course: price categories and semester.
-        /** @var mod_booking_generator $plugingenerator */
-        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
-        $pricecat1 = $plugingenerator->create_pricecategory(
-                ['ordernum' => '1', 'identifier' => 'default', 'name' => 'Price', 'defaultvalue' => '12']);
-        $pricecat2 = $plugingenerator->create_pricecategory(
-                ['ordernum' => '2', 'identifier' => 'intern', 'name' => 'Intern', 'defaultvalue' => '13']);
-        $testsemester = $plugingenerator->create_semester(
-                ['identifier' => 'fall2023', 'name' => 'Fall 2023', 'startdate' => '1695168000', 'enddate' => '1704067140']);
-        // For tests startdate = bookingopeningtime = 20.09.2023 00:00 and enddate = bookingclosingtime = 31.12.2023 23:59 GMT.
+        // Create designated course category.
+        $category1 = $this->getDataGenerator()->create_category(['name' => 'BookCat1', 'idnumber' => 'BCAT1']);
 
-        // Setup booking defaults and create booking course module.
-        $bdata = ['name' => 'Test CSV Import of option', 'eventtype' => 'Test event', 'enablecompletion' => 1,
-            'bookedtext' => ['text' => 'text'], 'waitingtext' => ['text' => 'text'],
-            'notifyemail' => ['text' => 'text'], 'statuschangetext' => ['text' => 'text'],
-            'deletedtext' => ['text' => 'text'], 'pollurltext' => ['text' => 'text'],
-            'pollurlteacherstext' => ['text' => 'text'],
-            'notificationtext' => ['text' => 'text'], 'userleave' => ['text' => 'text'],
-            'bookingpolicy' => 'bookingpolicy', 'tags' => '', 'completion' => 2,
-            'showviews' => ['showall,showactive,mybooking,myoptions,myinstitution'],
-            'optionsfields' =>
-            ['description', 'statusdescription', 'teacher', 'showdates', 'dayofweektime', 'location', 'institution', 'minanswers'],
-            'semesterid' => $testsemester->id,
-            'mergeparam' => 2,
-        ];
-        $bdata['course'] = $course->id;
-        $bdata['bookingmanager'] = $user1->username;
+        // Setup test courses.
+        $course1 = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
+        $course2 = $this->getDataGenerator()->create_course(['enablecompletion' => 1, 'startdate' => strtotime('now + 2 day')]);
+        $course3 = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
+        $course4 = $this->getDataGenerator()->create_course(['enablecompletion' => 1, 'tags' => [$tag1->name]]);
+
+        // Create users.
+        $student1 = $this->getDataGenerator()->create_user();
+        $student2 = $this->getDataGenerator()->create_user();
+        $student3 = $this->getDataGenerator()->create_user();
+        $student4 = $this->getDataGenerator()->create_user();
+        $teacher = $this->getDataGenerator()->create_user();
+        $bookingmanager = $this->getDataGenerator()->create_user(); // Booking manager.
+
+        $bdata['course'] = $course1->id;
+        $bdata['bookingmanager'] = $bookingmanager->username;
 
         $booking1 = $this->getDataGenerator()->create_module('booking', $bdata);
 
-        // Finish to configure users.
-        $this->setUser($user1);
+        $this->setAdminUser();
 
-        $this->getDataGenerator()->enrol_user($user1->id, $course->id);
-        $this->getDataGenerator()->enrol_user($user2->id, $course->id);
-        $this->getDataGenerator()->enrol_user($user3->id, $course->id);
+        $this->getDataGenerator()->enrol_user($student1->id, $course1->id, 'student');
+        $this->getDataGenerator()->enrol_user($student2->id, $course1->id, 'student');
+        $this->getDataGenerator()->enrol_user($student3->id, $course1->id, 'student');
+        $this->getDataGenerator()->enrol_user($student4->id, $course1->id, 'student');
+        $this->getDataGenerator()->enrol_user($teacher->id, $course1->id, 'editingteacher');
+        $this->getDataGenerator()->enrol_user($bookingmanager->id, $course1->id, 'editingteacher');
 
-        $coursectx = context_course::instance($course->id);
+        // Create 1st booking option - existing course, enrol at coursestart.
+        $record = new stdClass();
+        $record->bookingid = $booking1->id;
+        $record->text = 'Test option1 (enroll on start)';
+        $record->chooseorcreatecourse = 1; // Reqiured.
+        $record->courseid = $course2->id;
+        $record->enrolmentstatus = 0; // Enrol at coursestart.
+        $record->optiondateid_0 = "0";
+        $record->daystonotify_0 = "0";
+        $record->coursestarttime_0 = strtotime('now + 3 day');
+        $record->courseendtime_0 = strtotime('now + 4 day');
 
-        // Get coursemodule of bookjng instance.
-        $cmb1 = get_coursemodule_from_instance('booking', $booking1->id);
+        /** @var mod_booking_generator $plugingenerator */
+        $plugingenerator = self::getDataGenerator()->get_plugin_generator('mod_booking');
+        $option1 = $plugingenerator->create_option($record);
 
-        // Get booking instance.
-        $bookingobj1 = new booking($cmb1->id);
+        $settings1 = singleton_service::get_instance_of_booking_option_settings($option1->id);
+        // To avoid retrieving the singleton with the wrong settings, we destroy it.
+        singleton_service::destroy_booking_singleton_by_cmid($settings1->cmid);
 
-        // Prepare import options.
-        $formdata = new stdClass;
-        $formdata->delimiter_name = 'comma';
-        $formdata->enclosure = '"';
-        $formdata->encoding = 'utf-8';
-        $formdata->updateexisting = true;
-        $formdata->dateparseformat = 'j.n.Y H:i:s';
-        $formdata->cmid = $cmb1->id;
-        // Create instance of csv_import class.
-        $bookingcsvimport1 = new bookingoptionsimporter();
+        // Create 2nd booking option - existing course, enrol immediately.
+        $record->text = 'Test option2 (enroll now)';
+        $record->chooseorcreatecourse = 1;
+        $record->courseid = $course3->id;
+        $record->enrolmentstatus = 2; // Enrol now.
+        $option2 = $plugingenerator->create_option($record);
 
-        // Perform import of CSV: 3 new booking options have to be created.
-        $res = $bookingcsvimport1->execute_bookingoptions_csv_import(
-                                    $formdata,
-                                    file_get_contents($this->get_full_path_of_csv_file('options_coma_new', '01')),
-        );
-        // Check success of import process.
-        $this->assertIsArray($res);
-        $this->assertEmpty($res['errors']);
-        $this->assertEquals(1, $res['success']);
-        $this->assertEquals(3, $res['numberofsuccessfullyupdatedrecords']);
-        // Check actual records count.
-        $this->assertEquals(3, $bookingobj1->get_all_options_count());
-        // Get 1st option.
-        $option1 = $bookingobj1->get_all_options(0, 0, "0-Allgemeines Turnen");
-        $this->assertEquals(1, count($option1));
-        // Verify general data of 1st option.
-        $option1 = array_shift($option1);
-        $this->assertEquals("pftr52", $option1->identifier);
-        $this->assertEquals($bookingobj1->id, $option1->bookingid);
-        $this->assertEquals("Vorwiegend Outdoor", $option1->description);
-        $this->assertEquals("Spitalgasse 14 1090 Wien", $option1->institution);
-        $this->assertEquals("MO 17:15 - 19:30", $option1->dayofweektime);
-        $this->assertEquals(35, $option1->maxanswers);
-        $this->assertEquals("monday", $option1->dayofweek);
+        $settings2 = singleton_service::get_instance_of_booking_option_settings($option2->id);
+        // To avoid retrieving the singleton with the wrong settings, we destroy it.
+        singleton_service::destroy_booking_singleton_by_cmid($settings2->cmid);
 
-        // This might fail when local_entities is installed.
-        $this->assertEquals("TNMU", $option1->location);
+        // Booking options by the 1st student.
+        $result = $plugingenerator->create_answer(['optionid' => $option1->id, 'userid' => $student1->id]);
+        $this->assertEquals(MOD_BOOKING_BO_COND_ALREADYBOOKED, $result);
+        $result = $plugingenerator->create_answer(['optionid' => $option2->id, 'userid' => $student1->id]);
+        $this->assertEquals(MOD_BOOKING_BO_COND_ALREADYBOOKED, $result);
 
-        // Check if the user is subscribed.
-        $settings = singleton_service::get_instance_of_booking_option_settings($option1->id);
-        $ba = singleton_service::get_instance_of_booking_answers($settings);
-        $this->assertEquals(MOD_BOOKING_STATUSPARAM_BOOKED, $ba->user_status($user3->id));
+        // Now check if the user is enrolled to the course. We should get two courses.
+        $courses = enrol_get_users_courses($student1->id);
+        $this->assertEquals(2, count($courses));
+        $this->assertEquals(true, in_array('Test course 3', array_column($courses, 'fullname')));
+        $this->assertEquals(false, in_array('Test course 2', array_column($courses, 'fullname')));
 
-        // Create booking option object to get extra detsils.
-        $bookingoptionobj = new booking_option($cmb1->id, $option1->id);
+        // Create 3rd booking option - new empty course, enrol at coursestart.
+        $record->text = 'Option3-empty_course-enrol_at_start';
+        $record->chooseorcreatecourse = 2;
+        $record->enrolmentstatus = 0; // Enrol at coursestart.
+        $option3 = $plugingenerator->create_option($record);
 
-        // Verify teacher for 1st option.
-        $teacher1 = $bookingoptionobj->get_teachers();
-        $teacher1 = array_shift($teacher1);
-        $this->assertEquals($useremails[0], $teacher1->email);
+        $settings3 = singleton_service::get_instance_of_booking_option_settings($option3->id);
+        // To avoid retrieving the singleton with the wrong settings, we destroy it.
+        singleton_service::destroy_booking_singleton_by_cmid($settings3->cmid);
 
-        // Bookimg option must have sessions.
-        $this->assertEquals(true, booking_utils::booking_option_has_optiondates($option1->id));
-        // phpcs:ignore
-        //$dates1 = $bookingoptionobj->return_array_of_sessions()); // Also works.
-        $dates = dates_handler::return_array_of_sessions_datestrings($option1->id);
-        $this->assertEquals("25 September 2023, 5:15 PM - 7:30 PM", $dates[0]);
-        $this->assertEquals("25 December 2023, 5:15 PM - 7:30 PM", $dates[13]);
-        $this->assertArrayNotHasKey(14, $dates);
+        // Create 4th booking option - new empty course, enrol immediately.
+        $record->text = 'Option4-empty_course-enrol_now';
+        $record->chooseorcreatecourse = 2;
+        $record->enrolmentstatus = 2; // Enroll now.
+        $option4 = $plugingenerator->create_option($record);
 
-        // Check prices.
-        $optionprices = price::get_prices_from_cache_or_db('option', $option1->id);
-        // The 'default' price.
-        $priceoption = array_shift($optionprices);
-        $this->assertEquals($pricecat1->identifier, $priceoption->pricecategoryidentifier);
-        $this->assertEquals('79.00', $priceoption->price);
-        // The 'intern' price.
-        $priceoption = array_shift($optionprices);
-        $this->assertEquals($pricecat2->identifier, $priceoption->pricecategoryidentifier);
-        $this->assertEquals('89.00', $priceoption->price);
+        $settings4 = singleton_service::get_instance_of_booking_option_settings($option4->id);
+        // To avoid retrieving the singleton with the wrong settings, we destroy it.
+        singleton_service::destroy_booking_singleton_by_cmid($settings4->cmid);
 
-        // Get 3rd option.
-        $option3 = $bookingobj1->get_all_options(0, 0, "0-Kondition Mit Musik");
-        $this->assertEquals(1, count($option3));
-        // Verify data of 1st option.
-        $option3 = array_shift($option3);
-        $this->assertEquals("pftr54", $option3->identifier);
-        $this->assertEquals($bookingobj1->id, $option3->bookingid);
-        $this->assertEmpty($option3->description);
-        $this->assertEquals("Spitalgasse 14 1090 Wien", $option3->institution);
-        $this->assertEquals("We 18:10 - 19:40", $option3->dayofweektime);
-        $this->assertEquals(60, $option3->maxanswers);
-        $this->assertEquals("wednesday", $option3->dayofweek);
+        // Booking options by the 1st student.
+        $result = $plugingenerator->create_answer(['optionid' => $option3->id, 'userid' => $student1->id]);
+        $this->assertEquals(MOD_BOOKING_BO_COND_ALREADYBOOKED, $result);
+        $result = $plugingenerator->create_answer(['optionid' => $option4->id, 'userid' => $student1->id]);
+        $this->assertEquals(MOD_BOOKING_BO_COND_ALREADYBOOKED, $result);
 
-        // This might fail when local_entities is installed.
-        $this->assertEquals("TNMU", $option3->location);
+        // Now check if the user is enrolled to the course. We should get three courses.
+        $courses = enrol_get_users_courses($student1->id);
+        $this->assertEquals(3, count($courses));
+        $this->assertEquals(true, in_array('Option4-empty_course-enrol_now', array_column($courses, 'fullname')));
+        $this->assertEquals(false, in_array('Option3-empty_course-enrol_at_start', array_column($courses, 'fullname')));
 
-        // Check if the user is subscribed.
-        $settings = singleton_service::get_instance_of_booking_option_settings($option3->id);
-        $ba = singleton_service::get_instance_of_booking_answers($settings);
-        $this->assertEquals(MOD_BOOKING_STATUSPARAM_BOOKED, $ba->user_status($user3->id));
+        // Create custom booking field category and field.
+        $categorydata            = new stdClass();
+        $categorydata->name      = 'bookcat';
+        $categorydata->component = 'mod_booking';
+        $categorydata->area      = 'booking';
+        $categorydata->itemid    = 0;
+        $categorydata->contextid = context_system::instance()->id;
+        $bookingcat = $this->getDataGenerator()->create_custom_field_category((array)$categorydata);
+        $bookingcat->save();
 
-        // Create booking option object to get extra detsils.
-        $bookingoptionobj = new booking_option($cmb1->id, $option3->id);
-        // Verify teacher for 1st option.
-        $teacher3 = $bookingoptionobj->get_teachers();
-        $this->assertEmpty($teacher3);
+        $fielddata                = new stdClass();
+        $fielddata->categoryid    = $bookingcat->get('id');
+        $fielddata->name       = 'CourseCat';
+        $fielddata->shortname  = 'coursecat';
+        $fielddata->type = 'text';
+        $fielddata->configdata    = "";
+        $bookingfield = $this->getDataGenerator()->create_custom_field((array)$fielddata);
+        $bookingfield->save();
+        $this->assertTrue(\core_customfield\field::record_exists($bookingfield->get('id')));
 
-        // Bookimg option must have sessions.
-        $this->assertEquals(true, booking_utils::booking_option_has_optiondates($option3->id));
-        $dates = dates_handler::return_array_of_sessions_datestrings($option3->id);
-        $this->assertEquals("20 September 2023, 6:10 PM - 7:40 PM", $dates[0]);
-        $this->assertEquals("27 December 2023, 6:10 PM - 7:40 PM", $dates[14]);
-        $this->assertArrayNotHasKey(15, $dates);
+        // Set params requred for new course category.
+        set_config('newcoursecategorycfield', 'coursecat', 'booking');
 
-        // Check prices.
-        $optionprices = price::get_prices_from_cache_or_db('option', $option3->id);
-        // The 'default' price.
-        $priceoption = array_shift($optionprices);
-        $this->assertEquals($pricecat1->identifier, $priceoption->pricecategoryidentifier);
-        $this->assertEquals('79.00', $priceoption->price);
-        // The 'intern' price.
-        $priceoption = array_shift($optionprices);
-        $this->assertEquals($pricecat2->identifier, $priceoption->pricecategoryidentifier);
-        $this->assertEquals('89.00', $priceoption->price);
+        // Create 5th booking option - new empty course, enrol at coursestart.
+        $record->text = 'Option5-empty_course_existing_cat-enrol';
+        $record->chooseorcreatecourse = 2;
+        $record->enrolmentstatus = 2; // Enroll now.
+        $record->customfield_coursecat = 'BookCat1';
+        $option5 = $plugingenerator->create_option($record);
+
+        $settings5 = singleton_service::get_instance_of_booking_option_settings($option5->id);
+        // To avoid retrieving the singleton with the wrong settings, we destroy it.
+        singleton_service::destroy_booking_singleton_by_cmid($settings5->cmid);
+
+        // Create 6th booking option - new empty course, enrol immediately.
+        $record->text = 'Option6-empty_course_new_cat-enrol';
+        $record->chooseorcreatecourse = 2;
+        $record->enrolmentstatus = 2; // Enroll now.
+        $record->customfield_coursecat = 'NewBookCat';
+        $option6 = $plugingenerator->create_option($record);
+
+        $settings6 = singleton_service::get_instance_of_booking_option_settings($option6->id);
+        // To avoid retrieving the singleton with the wrong settings, we destroy it.
+        singleton_service::destroy_booking_singleton_by_cmid($settings6->cmid);
+
+        // Booking options by the 1st student.
+        $result = $plugingenerator->create_answer(['optionid' => $option5->id, 'userid' => $student1->id]);
+        $this->assertEquals(MOD_BOOKING_BO_COND_ALREADYBOOKED, $result);
+        $result = $plugingenerator->create_answer(['optionid' => $option6->id, 'userid' => $student1->id]);
+        $this->assertEquals(MOD_BOOKING_BO_COND_ALREADYBOOKED, $result);
+
+        // Now check if the user is enrolled to the course. We should get five courses.
+        $courses = enrol_get_users_courses($student1->id);
+        $this->assertEquals(5, count($courses));
+        $this->assertEquals(true, in_array('Option5-empty_course_existing_cat-enrol', array_column($courses, 'fullname')));
+        $this->assertEquals(true, in_array('Option6-empty_course_new_cat-enrol', array_column($courses, 'fullname')));
+        $key = array_search('Option5-empty_course_existing_cat-enrol', array_column($courses, 'fullname', 'id'));
+        $this->assertEquals($category1->id, (int) $courses[$key]->category);
+        $key = array_search('Option6-empty_course_new_cat-enrol', array_column($courses, 'fullname', 'id'));
+        $coursecat = core_course_category::get((int) $courses[$key]->category);
+        $this->assertEquals('NewBookCat', $coursecat->get_formatted_name());
+
+        // Create page activity under a template course.
+        $record1 = new stdClass();
+        $record1->name = 'TempPage1';
+        $record1->choosintroeorcreatecourse = 'PageDesc1';
+        $record1->course = $course4->id;
+        $record1->idnumber = 'PAGE1';
+
+        /** @var \mod_page_generator $plugingenerator1 */
+        $plugingenerator1 = self::getDataGenerator()->get_plugin_generator('mod_page');
+        $page1 = $plugingenerator1->create_instance($record1);
+
+        // Set params requred for new course template.
+        set_config('templatetags', $tag1->id, 'booking');
+
+        // Get 1st tagged course.
+        $taggedcourses = connectedcourse::return_tagged_template_courses();
+        $taggedcourse = reset($taggedcourses);
+
+        // Create 7th booking option - course form template into existing category, enrol at coursestart.
+        $record->text = 'Option7-course_template_existing_cat-enrol';
+        $record->enrolmentstatus = 2; // Enroll now.
+        $record->customfield_coursecat = 'BookCat1';
+        $option7 = $plugingenerator->create_option($record);
+        $settings7 = singleton_service::get_instance_of_booking_option_settings($option7->id);
+        // To avoid retrieving the singleton with the wrong settings, we destroy it.
+        singleton_service::destroy_booking_singleton_by_cmid($settings7->cmid);
+        // TODO: We can connect course from template only via updationg of option. Does it a bug?
+        $record->id = $option7->id;
+        $record->cmid = $settings7->cmid;
+        $record->chooseorcreatecourse = 3;
+        $record->coursetemplateid = $taggedcourse->id;
+        booking_option::update($record);
+
+        // Create 8th booking option - course form template into new category, enrol immediately.
+        $record->text = 'Option8-course_template_new_cat-enrol';
+        $record->enrolmentstatus = 2; // Enroll now.
+        $record->customfield_coursecat = 'TemplateBookCat';
+        $option8 = $plugingenerator->create_option($record);
+        $settings8 = singleton_service::get_instance_of_booking_option_settings($option8->id);
+        // To avoid retrieving the singleton with the wrong settings, we destroy it.
+        singleton_service::destroy_booking_singleton_by_cmid($settings8->cmid);
+        // TODO: We can connect course from template only via updationg of option. Does it a bug?
+        $record->id = $option8->id;
+        $record->cmid = $settings8->cmid;
+        $record->chooseorcreatecourse = 3;
+        $record->coursetemplateid = $taggedcourse->id;
+        booking_option::update($record);
+
+        // Booking options by the 1st student.
+        $result = $plugingenerator->create_answer(['optionid' => $option7->id, 'userid' => $student1->id]);
+        $this->assertEquals(MOD_BOOKING_BO_COND_ALREADYBOOKED, $result);
+        $result = $plugingenerator->create_answer(['optionid' => $option8->id, 'userid' => $student1->id]);
+        $this->assertEquals(MOD_BOOKING_BO_COND_ALREADYBOOKED, $result);
+
+        ob_start();
+        $this->runAdhocTasks();
+        $res = ob_get_clean();
+
+        // Now check if the user is enrolled to the course. We should get seven courses.
+        $courses = enrol_get_users_courses($student1->id);
+        $this->assertEquals(7, count($courses));
+        $this->assertEquals(true, in_array('Option7-course_template_existing_cat-enrol', array_column($courses, 'fullname')));
+        $this->assertEquals(true, in_array('Option8-course_template_new_cat-enrol', array_column($courses, 'fullname')));
+        // Verify course 7.
+        $key = array_search('Option7-course_template_existing_cat-enrol', array_column($courses, 'fullname', 'id'));
+        $this->assertEquals($category1->id, (int) $courses[$key]->category);
+        // Ensure "page" activity exist in the course 7.
+        $modules = get_fast_modinfo($courses[$key]);
+        $instances = $modules->get_instances();
+        $this->assertEquals(true, array_key_exists('page', $instances));
+        // Verify course 8.
+        $key = array_search('Option8-course_template_new_cat-enrol', array_column($courses, 'fullname', 'id'));
+        $coursecat = core_course_category::get((int) $courses[$key]->category);
+        $this->assertEquals('TemplateBookCat', $coursecat->get_formatted_name());
+        // Ensure "page" activity exist in the course 8.
+        $modules = get_fast_modinfo($courses[$key]);
+        $instances = $modules->get_instances();
+        $this->assertEquals(true, array_key_exists('page', $instances));
     }
 
     /**
-     * Get full path of CSV file.
+     * Data provider for booking_option_test
      *
-     * @param string $setname
-     * @param string $test
-     * @return string full path of file.
+     * @return array
+     * @throws \UnexpectedValueException
      */
-    protected function get_full_path_of_csv_file(string $setname, string $test): string {
-        return  __DIR__."/fixtures/{$setname}{$test}.csv";
+    public static function booking_common_settings_provider(): array {
+        $bdata = [
+            'name' => 'Test Booking 1',
+            'eventtype' => 'Test event',
+            'enablecompletion' => 1,
+            'bookedtext' => ['text' => 'text'],
+            'waitingtext' => ['text' => 'text'],
+            'notifyemail' => ['text' => 'text'],
+            'statuschangetext' => ['text' => 'text'],
+            'deletedtext' => ['text' => 'text'],
+            'pollurltext' => ['text' => 'text'],
+            'pollurlteacherstext' => ['text' => 'text'],
+            'notificationtext' => ['text' => 'text'],
+            'userleave' => ['text' => 'text'],
+            'tags' => '',
+            'completion' => 2,
+            'showviews' => ['mybooking,myoptions,optionsiamresponsiblefor,showall,showactive,myinstitution'],
+        ];
+        return ['bdata' => [$bdata]];
     }
 }

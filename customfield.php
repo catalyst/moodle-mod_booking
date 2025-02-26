@@ -38,13 +38,14 @@ $PAGE->set_url($pageurl);
 // phpcs:ignore Squiz.PHP.CommentedOutCode.Found
 /*admin_externalpage_setup('modbookingcustomfield', '', null, '', array('pagelayout' => 'report'));*/
 $PAGE->set_title(
-        format_string($SITE->shortname) . ': ' . get_string('customfieldconfigure', 'booking'));
+    format_string($SITE->shortname) . ': ' . get_string('customfieldconfigure', 'booking')
+);
 
 $output = $PAGE->get_renderer('core_customfield');
 $handler = booking_handler::create();
 $outputpage = new \core_customfield\output\management($handler);
 
 echo $output->header(),
-        $output->heading(new lang_string('booking_customfield', 'mod_booking')),
+        $output->heading(new lang_string('bookingcustomfield', 'mod_booking')),
         $output->render($outputpage),
         $output->footer();

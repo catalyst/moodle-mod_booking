@@ -41,7 +41,6 @@ use stdClass;
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 interface booking_subbooking {
-
     /**
      * Adds the form elements for this subbooking to the provided mform.
      * @param MoodleQuickForm $mform the mform where the subbooking should be added
@@ -85,9 +84,10 @@ interface booking_subbooking {
     /**
      * Return interface for this subbooking type as an array of data & template.
      * @param booking_option_settings $settings
+     * @param int $userid
      * @return array
      */
-    public function return_interface(booking_option_settings $settings): array;
+    public function return_interface(booking_option_settings $settings, int $userid): array;
 
     /**
      * The price might be altered, eg. when more than one item is selected.
@@ -105,19 +105,41 @@ interface booking_subbooking {
      * But normally the itemid here is the same as the subboooking it.
      *
      * @param int $itemid
-     * @param object $user
+     * @param int $userid
      *
      * @return array
      */
-    public function return_subbooking_information(int $itemid = 0, $user = null): array;
-
+    public function return_subbooking_information(int $itemid = 0, int $userid = 0): array;
     /**
      * When a subbooking is booked, we might need some supplementary values saved.
      * Evey subbooking type can decide what to store in the answer json.
      *
      * @param int $itemid
-     * @param object $user
+     * @param ?object $user
      * @return string
      */
-    public function return_answer_json(int $itemid, $user = null): string;
+    public function return_answer_json(int $itemid, ?object $user = null): string;
+
+    /**
+     * Is blocking. This depends on the settings and user.
+     *
+     * @param booking_option_settings $settings
+     * @param int $userid
+     *
+     * @return bool
+     *
+     */
+    public function is_blocking(booking_option_settings $settings, int $userid = 0): bool;
+
+    /**
+     * After booking action.
+     *
+     * @param booking_option_settings $settings
+     * @param int $userid
+     * @param int $recordid
+     *
+     * @return bool
+     *
+     */
+    public function after_booking_action(booking_option_settings $settings, int $userid = 0, int $recordid = 0): bool;
 }

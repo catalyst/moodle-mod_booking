@@ -24,6 +24,7 @@
 
 namespace mod_booking\option\fields;
 
+use core_customfield\api;
 use mod_booking\booking_option_settings;
 use mod_booking\customfield\booking_handler;
 use mod_booking\option\field_base;
@@ -86,17 +87,17 @@ class customfields extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         // No need to do anything here.
-        return '';
+        return [];
     }
 
     /**
@@ -104,9 +105,17 @@ class customfields extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         $optionid = $formdata['id'] ?? $formdata['optionid'];
 
@@ -116,12 +125,21 @@ class customfields extends field_base {
             $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
             $context = context_module::instance($settings->cmid);
         } else {
-            throw new moodle_exception('customfields.php: missing context in function instance_form_definition');
+            // No limit for context.
+            $context = new stdClass();
+            $context->id = 0;
         }
 
         // Add custom fields.
         $handler = booking_handler::create();
-        $handler->instance_form_definition($mform, $optionid, null, null, $context->id);
+        $handler->instance_form_definition(
+            $mform,
+            $optionid,
+            null,
+            null,
+            $context->id,
+            $fieldstoinstanciate
+        );
     }
 
     /**
@@ -143,16 +161,69 @@ class customfields extends field_base {
      * ... after saving the option. This is so, when we need an option id for saving (because of other table).
      * @param stdClass $formdata
      * @param stdClass $option
-     * @return void
+     * @return array
      * @throws dml_exception
      */
-    public static function save_data(stdClass &$formdata, stdClass &$option) {
+    public static function save_data(stdClass &$formdata, stdClass &$option): array {
 
         // This is to save customfield data
         // The id key has to be set to option id.
         $optionid = $option->id;
         $handler = booking_handler::create();
+        $isnewinstance = $optionid == -1;
+
+        $editablefields = $handler->get_editable_fields($isnewinstance ? 0 : $formdata->id);
+        $oldfields = api::get_instance_fields_data($editablefields, $formdata->id);
+
+        // Tracking of changes here.
+        $changes = [];
+        foreach ($oldfields as $data) {
+            $context = \context_system::instance();
+
+            if (!$data->get('id')) {
+                $data->set('contextid', $context->id);
+            }
+
+            // Fix for dynamic custom fields that allow multiple values (multiselect).
+            $multiselect = $data->get_field()->get_configdata_property('multiselect');
+            $oldvalue = $data->get($data->datafield());
+
+            $key = $data->get_form_element_name();
+            $newvalue = $formdata->$key ?? "";
+            // Handling for editor fields.
+            if (is_array($newvalue) && isset($newvalue['text'])) {
+                $newvalue = $newvalue['text'];
+            } else if ($multiselect == "1") {
+                $oldvalue = explode(",", $oldvalue);
+            }
+
+            if ($oldvalue != $newvalue) {
+                // For the moment we don't return exact data about fields and values.
+                // Only report that there was change in the section.
+                // Can be extended when needed.
+                $fieldname = $data->get_field()->get('name') ?? $key;
+                $oldvalue = is_string($oldvalue) ? format_string($oldvalue) : $oldvalue;
+                $newvalue = is_string($newvalue) ? format_string($newvalue) : $newvalue;
+                $changes[$key] = [
+                    'changes' => [
+                        'fieldname' => 'customfields',
+                        'oldvalue' => $fieldname . ' : ' . $oldvalue,
+                        'newvalue' => $fieldname . ' : ' . $newvalue,
+                    ],
+                ];
+            }
+        }
+        // Changes can apply to multiple fields.
+        $allchanges = [];
+        if (!empty($changes)) {
+            $allchanges['changes'] = [];
+            foreach ($changes as $key => $change) {
+                $allchanges['changes'][] = $change;
+            }
+        };
+
         $handler->instance_form_save($formdata, $optionid == -1);
+        return $allchanges;
     }
 
     /**
@@ -185,6 +256,7 @@ class customfields extends field_base {
         $fields = $handler->get_fields();
 
         $returnarray = array_map(fn($a) => [
+            'id' => $a->get('id'),
             'shortname' => $a->get('shortname'),
             'name' => $a->get('name'),
             'checked' => 1,

@@ -27,6 +27,7 @@ namespace mod_booking\option\fields;
 use mod_booking\booking_option_settings;
 use mod_booking\option\fields_info;
 use mod_booking\option\field_base;
+use mod_booking\singleton_service;
 use MoodleQuickForm;
 use stdClass;
 
@@ -85,17 +86,20 @@ class description extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
+     * @param ?mixed $returnvalue
      * @return string // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         $key = fields_info::get_class_name(static::class);
         $value = $formdata->{$key} ?? null;
+
+        $instance = new description();
+        $changes = $instance->check_for_changes($formdata, $instance, null, $key, $value);
 
         if (!empty($value)) {
             // The form comes in the form of an array.
@@ -112,7 +116,7 @@ class description extends field_base {
         }
 
         // We can return an warning message here.
-        return '';
+        return $changes;
     }
 
     /**
@@ -120,14 +124,24 @@ class description extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         // Standardfunctionality to add a header to the mform (only if its not yet there).
-        fields_info::add_header_to_mform($mform, self::$header);
+        if ($applyheader) {
+            fields_info::add_header_to_mform($mform, self::$header);
+        }
 
-        $mform->addElement('editor', 'description', get_string('description'), ['rows' => 10]);
+        $mform->addElement('editor', 'description', get_string('description', 'mod_booking'), ['rows' => 10]);
         $mform->setType('description', PARAM_CLEANHTML);
     }
 
@@ -150,5 +164,28 @@ class description extends field_base {
         $format = $settings->{$key . 'format'} ?? FORMAT_HTML;
 
         $data->{$key} = ['text' => $value, 'format' => $format];
+    }
+
+    /**
+     * This function adds error keys for form validation.
+     * @param array $data
+     * @param array $files
+     * @param array $errors
+     * @return array
+     */
+    public static function validation(array $data, array $files, array &$errors) {
+
+        $maxlength = get_config('booking', 'descriptionmaxlength');
+
+        if (
+            !empty($maxlength)
+            && !empty($data['description'])
+            && !empty($data['description']['text'])
+            && $maxlength < strlen(strip_tags($data['description']['text']))
+        ) {
+            $errors['description'] = get_string('maximumchars', '', $maxlength);
+        }
+
+        return $errors;
     }
 }

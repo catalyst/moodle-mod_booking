@@ -83,19 +83,22 @@ class location extends field_base {
      * @param stdClass $formdata
      * @param stdClass $newoption
      * @param int $updateparam
-     * @param mixed $returnvalue
-     * @return string // If no warning, empty string.
+     * @param ?mixed $returnvalue
+     * @return array // If no warning, empty string.
      */
     public static function prepare_save_field(
         stdClass &$formdata,
         stdClass &$newoption,
         int $updateparam,
-        $returnvalue = null): string {
+        $returnvalue = null): array {
 
         if (!class_exists('local_entities\entitiesrelation_handler')) {
-            return parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+            parent::prepare_save_field($formdata, $newoption, $updateparam, '');
+            $instance = new location();
+            $changes = $instance->check_for_changes($formdata, $instance);
+            return $changes;
         } else {
-            return '';
+            return [];
         }
     }
 
@@ -104,16 +107,26 @@ class location extends field_base {
      * @param MoodleQuickForm $mform
      * @param array $formdata
      * @param array $optionformconfig
+     * @param array $fieldstoinstanciate
+     * @param bool $applyheader
      * @return void
      */
-    public static function instance_form_definition(MoodleQuickForm &$mform, array &$formdata, array $optionformconfig) {
+    public static function instance_form_definition(
+        MoodleQuickForm &$mform,
+        array &$formdata,
+        array $optionformconfig,
+        $fieldstoinstanciate = [],
+        $applyheader = true
+    ) {
 
         global $DB, $CFG;
 
         // We don't show the location and address fields if we have entities installed.
         if (!class_exists('local_entities\entitiesrelation_handler')) {
             // Standardfunctionality to add a header to the mform (only if its not yet there).
-            fields_info::add_header_to_mform($mform, self::$header);
+            if ($applyheader) {
+                fields_info::add_header_to_mform($mform, self::$header);
+            }
 
             // Location.
             $sql = 'SELECT DISTINCT location FROM {booking_options} ORDER BY location';

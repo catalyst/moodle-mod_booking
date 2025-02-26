@@ -334,6 +334,32 @@ class booking_settings {
     /** @var string $json is used to store non performance critical data like disablecancel, viewparam */
     public $json = null;
 
+    /** @var object $jsonobject is used to store non performance critical data like disablecancel, viewparam */
+    public $jsonobject = null;
+
+    // Explicit declaration of params to avoid "Creation of dynamic property booking_settings::$xxxxxx is deprecated" error.
+
+    /** @var int $disablecancel */
+    public $disablecancel = null;
+
+    /** @var int $viewparam */
+    public $viewparam = null;
+
+    /** @var int $overwriteblockingwarnings */
+    public $overwriteblockingwarnings = null;
+
+    /** @var int $disablebooking */
+    public $disablebooking = null;
+
+    /** @var int $billboardtext */
+    public $billboardtext = null;
+
+    /** @var int $cancelrelativedate */
+    public $cancelrelativedate = null;
+
+    /** @var int $allowupdatetimestamp */
+    public $allowupdatetimestamp = null;
+
     /**
      * Constructor for the booking settings class.
      *
@@ -370,7 +396,7 @@ class booking_settings {
      * @param object|null $dbrecord
      * @return object|null $dbrecordid
      */
-    private function set_values(int $cmid, object $dbrecord = null) {
+    private function set_values(int $cmid, ?object $dbrecord = null) {
         global $DB;
 
         // If we don't get the cached object, we have to fetch it here.
@@ -496,6 +522,14 @@ class booking_settings {
 
             // JSON.
             $this->json = $dbrecord->json;
+            if (!empty($dbrecord->json)) {
+                $this->jsonobject = json_decode($this->json);
+                foreach ($this->jsonobject as $key => $value) {
+                    $this->$key = $value;
+                }
+            } else {
+                $this->jsonobject = new stdClass();
+            }
 
             // If we do not have it yet, we have to load the booking manager's user object from DB.
             if (empty($dbrecord->bookingmanageruser) && !empty($dbrecord->bookingmanager)) {

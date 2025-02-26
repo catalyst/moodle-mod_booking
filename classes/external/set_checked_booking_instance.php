@@ -26,28 +26,26 @@ declare(strict_types=1);
 
 namespace mod_booking\external;
 
+use dml_exception;
 use external_api;
 use external_function_parameters;
 use external_single_structure;
 use external_value;
-use external_warnings;
-use mod_booking\booking_option;
-use mod_booking\singleton_service;
-use stdClass;
+use mod_booking\coursecategories;
 
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir . '/externallib.php');
 
 /**
- * External Service for unenrol user.
+ * External Service to create a booking option.
  *
  * @package   mod_booking
- * @copyright 2022 Wunderbyte GmbH {@link http://www.wunderbyte.at}
+ * @copyright 2024 Wunderbyte GmbH {@link http://www.wunderbyte.at}
  * @author    Georg Maißer
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class unenrol_user extends external_api {
+class set_checked_booking_instance extends external_api {
 
     /**
      * Describes the parameters for unenrol user.
@@ -55,44 +53,32 @@ class unenrol_user extends external_api {
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
-        return new external_function_parameters([
-            'cmid' => new external_value(PARAM_INT, 'CM ID'),
-            'optionid' => new external_value(PARAM_INT, 'Option id'),
-            'courseid' => new external_value(PARAM_INT, 'Course id'),
+        return new external_function_parameters(
+            [
+                'id' => new external_value(PARAM_INT, 'Context Id'),
             ]
         );
     }
 
     /**
-     * Webservice for unenrol user.
+     * Returns the available capabilities to configure
      *
-     * @param int $cmid
-     * @param int $optionid
-     * @param int $courseid
-     *
+     * @param int $id
      * @return array
+     * @throws dml_exception
      */
-    public static function execute(int $cmid, int $optionid, int $courseid): array {
-        global $USER;
+    public static function execute(int $id): array {
 
-        $params = self::validate_parameters(self::execute_parameters(),
-                ['cmid' => $cmid, 'optionid' => $optionid, 'courseid' => $courseid]);
+        $params = external_api::validate_parameters(self::execute_parameters(),
+            [
+                'id' => $id,
+            ]
+        );
 
-        $bookingdata = singleton_service::get_instance_of_booking_option($cmid, $optionid);
-        $bookingdata->apply_tags();
-
-        if ($bookingdata->user_delete_response($USER->id)) {
-            $contents = get_string('bookingdeleted', 'booking');
-        } else {
-            $contents = get_string('cannotremovesubscriber', 'booking');
-        }
+        $status = coursecategories::set_configured_booking_instances($params['id']);
 
         return [
-            'status' => true,
-            'cmid' => $cmid,
-            'message' => htmlentities($contents),
-            'optionid' => $optionid,
-            'courseid' => $courseid,
+          'successs' => $status,
         ];
     }
 
@@ -102,13 +88,9 @@ class unenrol_user extends external_api {
      * @return external_single_structure
      */
     public static function execute_returns(): external_single_structure {
-        return new external_single_structure([
-            'status' => new external_value(PARAM_BOOL, 'status: true if success'),
-            'warnings' => new external_warnings(),
-            'message' => new external_value(PARAM_TEXT, 'the updated note'),
-            'cmid' => new external_value(PARAM_INT),
-            'optionid' => new external_value(PARAM_INT),
-            'courseid' => new external_value(PARAM_INT),
+        return new external_single_structure(
+            [
+                'successs' => new external_value(PARAM_TEXT, 'Status'),
             ]
         );
     }

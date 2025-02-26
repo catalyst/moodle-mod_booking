@@ -24,6 +24,10 @@
 
 namespace mod_booking\output;
 
+use mod_booking\option\dates_handler;
+use mod_booking\option\fields\pollurl;
+use mod_booking\option\fields_info;
+use mod_booking\singleton_service;
 use renderer_base;
 use renderable;
 use templatable;
@@ -69,66 +73,32 @@ class bookingoption_changes implements renderable, templatable {
 
         $newchangesarray = [];
         foreach ($this->changesarray as $entry) {
-
             $entry = (array)$entry;
             if (isset($entry['fieldname'])) {
-                if ($entry['fieldname'] == 'coursestarttime') {
-                    if (isset($entry['oldvalue']) && isset($entry['newvalue'])) {
-                        $temparray = [
-                            'fieldname' => get_string('coursestarttime', 'booking'),
-                            'oldvalue' => userdate($entry['oldvalue'], get_string('strftimedatetime', 'langconfig')),
-                            'newvalue' => userdate($entry['newvalue'], get_string('strftimedatetime', 'langconfig')),
-                        ];
-                    } else if (isset($entry['newvalue'])) {
-                        $temparray = [
-                            'fieldname' => get_string('coursestarttime', 'booking'),
-                            'newvalue' => userdate($entry['newvalue'], get_string('strftimedatetime', 'langconfig')),
-                        ];
-                    } else {
-                        $temparray = [
-                            'fieldname' => get_string('coursestarttime', 'booking'),
-                            'oldvalue' => userdate($entry['oldvalue'], get_string('strftimedatetime', 'langconfig')),
-                        ];
-                    }
-                } else if ($entry['fieldname'] == 'courseendtime') {
-                    if (isset($entry['oldvalue']) && isset($entry['newvalue'])) {
-                        $temparray = [
-                            'fieldname' => get_string('courseendtime', 'booking'),
-                            'oldvalue' => userdate($entry['oldvalue'], get_string('strftimedatetime', 'langconfig')),
-                            'newvalue' => userdate($entry['newvalue'], get_string('strftimedatetime', 'langconfig')),
-                        ];
-                    } else if (isset($entry['newvalue'])) {
-                        $temparray = [
-                            'fieldname' => get_string('courseendtime', 'booking'),
-                            'newvalue' => userdate($entry['newvalue'], get_string('strftimedatetime', 'langconfig')),
-                        ];
-                    } else {
-                        $temparray = [
-                            'fieldname' => get_string('courseendtime', 'booking'),
-                            'oldvalue' => userdate($entry['oldvalue'], get_string('strftimedatetime', 'langconfig')),
-                        ];
-                    }
+                $fieldname = $entry['fieldname'];
+                $classname = fields_info::get_namespace_from_class_name($fieldname);
+                if (!empty($classname)) {
+                    $fieldsclass = new $classname();
+                    $changes = $fieldsclass->get_changes_description($entry);
+                } else if ($fieldname == "pollurlteachers") {
+                    // TODO create dummy fields class to access abstract method get_changes_description generically.
+                    $fieldsclass = new pollurl();
+                    $changes = $fieldsclass->get_changes_description($entry);
+                    $changes['fieldname'] = get_string($fieldname, 'mod_booking');
                 } else {
-                    $temparray = [
-                        'fieldname' => get_string($entry['fieldname'], 'booking'),
-                        'oldvalue' => $entry['oldvalue'],
-                        'newvalue' => $entry['newvalue'],
-                    ];
-                }
-
-                // If there is an info field, then add it.
-                if (isset($entry['info'])) {
-                    $temparray = array_merge($temparray, ['info' => $entry['info']]);
+                    // Probably the classname doesn't match the namespace.
+                    $changes = [];
                 }
 
                 // Now add the current change to the newchangesarray.
-                $newchangesarray[] = $temparray;
+                $newchangesarray[] = $changes;
 
             } else {
                 // Custom fields with links to video meeting sessions.
-                if (isset($entry['newname']) &&
-                    preg_match('/^((zoom)|(big.*blue.*button)|(teams)).*meeting$/i', $entry['newname'])) {
-
+                if (
+                    isset($entry['newname'])
+                    && preg_match('/^((zoom)|(big.*blue.*button)|(teams)).*meeting$/i', $entry['newname'])
+                ) {
                     // Never show the link directly, but use link.php instead.
                     $baseurl = $CFG->wwwroot;
 
@@ -140,20 +110,24 @@ class bookingoption_changes implements renderable, templatable {
                     }
 
                     if (!empty($entry['optionid'])) {
-                        $link = new moodle_url($baseurl . '/mod/booking/view.php',
-                        [
-                            'id' => $this->cmid,
-                        ]);
+                        $link = new moodle_url(
+                            $baseurl . '/mod/booking/view.php',
+                            [
+                                'id' => $this->cmid,
+                            ]
+                        );
                     } else {
-                        $link = new moodle_url($baseurl . '/mod/booking/link.php',
-                        [
-                            'id' => $this->cmid,
-                            'optionid' => $entry['optionid'],
-                            'action' => 'join',
-                            'sessionid' => $entry['optiondateid'],
-                            'fieldid' => $fieldid,
-                            'meetingtype' => $entry['newname'],
-                        ]);
+                        $link = new moodle_url(
+                            $baseurl . '/mod/booking/link.php',
+                            [
+                                'id' => $this->cmid,
+                                'optionid' => $entry['optionid'],
+                                'action' => 'join',
+                                'sessionid' => $entry['optiondateid'],
+                                'fieldid' => $fieldid,
+                                'meetingtype' => $entry['newname'],
+                            ]
+                        );
                     }
 
                     $entry['newvalue'] = html_writer::link($link, $link->out());
@@ -167,5 +141,7 @@ class bookingoption_changes implements renderable, templatable {
         return [
             'changes' => $newchangesarray,
         ];
+
     }
+
 }
