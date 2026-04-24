@@ -36,10 +36,11 @@ use mod_booking\elective;
 use mod_booking\event\booking_debug;
 use mod_booking\event\bookinganswer_presencechanged;
 use mod_booking\event\bookinganswer_notesedited;
-use mod_booking\event\bookingoption_booked;
+use mod_booking\local\calendar\calendar_helper;
+use mod_booking\local\certificateclass;
+use mod_booking\local\certificate_conditions\certificate_conditions;
 use mod_booking\local\checkanswers\checkanswers;
 use mod_booking\local\mobile\customformstore;
-use mod_booking\local\respondapi\handlers\respondapi_handler;
 use mod_booking\option\fields\certificate;
 use mod_booking\output\view;
 use mod_booking\singleton_service;
@@ -245,40 +246,11 @@ class mod_booking_observer {
         $optionid = $event->objectid;
         $cmid = $event->contextinstanceid;
 
-        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
-
-        // If there are associated optiondates (sessions) then update their calendar events.
-        if ($optiondates = $DB->get_records('booking_optiondates', ['optionid' => $optionid])) {
-            // Delete course event if we have optiondates (multisession!).
-            if ($settings->calendarid) {
-                $DB->delete_records('event', ['id' => $settings->calendarid]);
-                $data = new stdClass();
-                $data->id = $optionid;
-                $data->calendarid = 0;
-                $DB->update_record('booking_options', $data);
-
-                // Also, delete all associated user events.
-
-                // Get all the user events.
-                $sql = "SELECT e.*
-                        FROM {booking_userevents} ue
-                        JOIN {event} e
-                        ON ue.eventid = e.id
-                        WHERE ue.optionid = :optionid
-                        AND ue.optiondateid IS NULL";
-
-                $allevents = $DB->get_records_sql($sql, ['optionid' => $optionid]);
-
-                // We delete all userevents and return false.
-                foreach ($allevents as $eventrecord) {
-                    $DB->delete_records('event', ['id' => $eventrecord->id]);
-                    $DB->delete_records('booking_userevents', ['id' => $eventrecord->id]);
-                }
-            }
-
+        $optiondates = $DB->get_records('booking_optiondates', ['optionid' => $optionid]);
+        if (!empty($optiondates)) {
             foreach ($optiondates as $optiondate) {
                 // Create or update the sessions.
-                option_optiondate_update_event($optionid, $cmid, $optiondate);
+                calendar_helper::option_optiondate_update_event($optionid, $cmid, $optiondate);
             }
         }
 
@@ -291,8 +263,18 @@ class mod_booking_observer {
         foreach ($allteachers as $key => $value) {
             new calendar($event->contextinstanceid, $event->objectid, $value, calendar::MOD_BOOKING_TYPETEACHERUPDATE);
         }
+        // Important: Tests will fail if this cache purge is removed!
+        booking_option::purge_cache_for_option($optionid);
 
-        // At the very last moment, when everything is done, we invalidate the table cache.
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+        // If the bookingoption was set to invisible, we hide all associated calendar events.
+        if ($settings->invisible == MOD_BOOKING_OPTION_INVISIBLE) {
+            calendar_helper::option_set_visibility_for_all_calendar_events($optionid, 0); // 0 = hide.
+        } else {
+            calendar_helper::option_set_visibility_for_all_calendar_events($optionid, 1); // 1 = show.
+        }
+
+        // At the very last moment, when everything is done, we invalidate the cache again.
         booking_option::purge_cache_for_option($optionid);
     }
 
@@ -376,6 +358,13 @@ class mod_booking_observer {
             [$selecteduserid],
             $bookingoption->booking->settings,
             $cmid,
+            $optionid
+        );
+
+        // Evaluate and execute certificate conditions for the completed option.
+        certificate_conditions::evaluate_certificate_conditions(
+            $event,
+            $selecteduserid,
             $optionid
         );
 
@@ -659,8 +648,14 @@ class mod_booking_observer {
         if ($data['other']['presencenew'] == $data['other']['presenceold']) {
             return;
         }
-        if ($data['other']['presencenew'] == get_config('booking', 'presencestatustoissuecertificate')) {
-            certificate::issue_certificate($data['objectid'], $data['relateduserid']);
+        if (
+            $data['other']['presencenew'] == get_config('booking', 'presencestatustoissuecertificate')
+            && get_config('booking', 'certificateon')
+        ) {
+            $certificateid = booking_option::get_value_of_json_by_key((int)$data['objectid'], 'certificate') ?? 0;
+            if (!empty($certificateid)) {
+                certificateclass::issue_certificate($data['objectid'], $data['relateduserid'], 0, (int)$certificateid);
+            }
         }
     }
 
@@ -745,5 +740,19 @@ class mod_booking_observer {
     ): void {
         $userid = (int)$event->relateduserid;
         cache_helper::invalidate_by_event('setbackusercompetenciescache', [$userid]);
+    }
+
+    /**
+     * Observer for the following events:
+     *
+     * - core_customfield\event\field_created
+     * - core_customfield\event\field_updated
+     * - core_customfield\event\field_deleted
+     *
+     * @param core\event\base $event
+     * @return void
+     */
+    public static function customfield_created_updated_deleted(base $event): void {
+        cache_helper::invalidate_by_event('setbackcustomfields', []);
     }
 }

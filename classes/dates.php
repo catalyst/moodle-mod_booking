@@ -29,7 +29,9 @@
 namespace mod_booking;
 
 use coding_exception;
+use core_date;
 use DateTime;
+use DateTimeZone;
 use local_entities\entitiesrelation_handler;
 use mod_booking\customfield\optiondate_cfields;
 use mod_booking\option\dates_handler;
@@ -234,10 +236,10 @@ class dates {
                     ?? $defaultvalues->enddate
                     ?? $defaultvalues->courseendtime
                     ?? $defaultvalues->courseenddate;
-
+                $dateparseformat = $defaultvalues->dateparseformat ?? '';
                 $defaultvalues->{MOD_BOOKING_FORM_OPTIONDATEID . 0} = 0;
-                $defaultvalues->{MOD_BOOKING_FORM_COURSESTARTTIME . 0} = strtotime($starttime, time());
-                $defaultvalues->{MOD_BOOKING_FORM_COURSEENDTIME . 0} = strtotime($endtime, time());
+                $defaultvalues->{MOD_BOOKING_FORM_COURSESTARTTIME . 0} = self::parse_date_with_format($starttime, $dateparseformat);
+                $defaultvalues->{MOD_BOOKING_FORM_COURSEENDTIME . 0} = self::parse_date_with_format($endtime, $dateparseformat);
                 $defaultvalues->{MOD_BOOKING_FORM_DAYSTONOTIFY . 0} = 0;
             }
         }
@@ -932,12 +934,8 @@ class dates {
      * @throws coding_exception
      */
     private static function timestamp_to_array(int $timestamp) {
-
-        $formatteddate = date('Y-m-d, H:i', $timestamp);
-        $time = new DateTime(
-            $formatteddate
-        );
-
+        $time = new DateTime("@$timestamp");
+        $time->setTimezone(new DateTimeZone(core_date::get_user_timezone()));
         $datearray = [
             'day' => [$time->format('d')],
             'month' => [$time->format('m')],
@@ -945,7 +943,6 @@ class dates {
             'hour' => [$time->format('H')],
             'minute' => [$time->format('i')],
         ];
-
         return $datearray;
     }
 
@@ -962,7 +959,7 @@ class dates {
                    FROM {booking_rules} br
                    JOIN {context} ctx
                      ON ctx.id = br.contextid
-                  WHERE br.rulename = 'rule_daysbefore'
+                  WHERE br.rulename IN ('rule_daysbefore', 'rule_specifictime')
                     AND {$DB->sql_like('br.rulejson', ':optiondatestarttime', true)}
                     AND (
                         (ctx.contextlevel = :systemcontext AND ctx.instanceid = 0)
@@ -979,5 +976,24 @@ class dates {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Parse date string using custom format if available, fallback to strtotime().
+     * @param string $datestring The date string to parse
+     * @param string $dateparseformat Optional custom date format (from CSV import)
+     * @return int Unix timestamp
+     */
+    private static function parse_date_with_format($datestring, $dateparseformat) {
+        // If we have a custom date format from CSV import, use it.
+        if (!empty($dateparseformat)) {
+            $date = DateTime::createFromFormat($dateparseformat, $datestring);
+            if ($date !== false) {
+                return $date->getTimestamp();
+            }
+        }
+        // Fallback to strtotime.
+        $timestamp = strtotime($datestring);
+        return $timestamp !== false ? $timestamp : time();
     }
 }

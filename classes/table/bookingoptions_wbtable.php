@@ -30,6 +30,7 @@ use mod_booking\local\modechecker;
 use mod_booking\local\override_user_field;
 use mod_booking\output\col_responsiblecontacts;
 use mod_booking\output\renderer;
+use mod_booking\placeholders\placeholders_info;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -60,10 +61,47 @@ defined('MOODLE_INTERNAL') || die();
  * Class to handle search results for managers are shown in a table.
  *
  * @package mod_booking
- * @copyright 2023 Wunderbyte GmbH
+ * @copyright 2026 Wunderbyte GmbH
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class bookingoptions_wbtable extends wunderbyte_table {
+    /** @var string component for customfields */
+    public $customfieldcomponent = 'mod_booking';
+
+    /** @var string area used for customfields */
+    public $customfieldarea = 'booking';
+
+    /**
+     * Customfield columns.
+     * @var array
+     */
+    public $customfieldsinfoarray = [];
+
+    /**
+     * Store additional columns information.
+     * Structure:
+     * keys => shortname of the column or customfield
+     * values => array of arrays with keys:
+     *    'colname' => shortname of the column or customfield,
+     *    'class' => classes for the column, e.g. "text-center",
+     *    'region' => region where the column should be displayed, e.g. "cardbody",
+     *    'iconclass' => iconclass of the icon, e.g. "far fa-wrench",
+     *
+     * @param array $customfieldsinfoarray array of customfield column information
+     */
+    public function set_customfields_info_array(array $customfieldsinfoarray = []): void {
+        $this->customfieldsinfoarray = $customfieldsinfoarray;
+    }
+
+    /**
+     * Get additional customfield columns information.
+     *
+     * @return array of customfield column information
+     */
+    public function get_customfields_info_array(): array {
+        return $this->customfieldsinfoarray ?? [];
+    }
+
     /**
      * This function is called for each data row to allow processing of the
      * invisible value. It's called 'invisibleoption' so it does not interfere with
@@ -297,13 +335,13 @@ class bookingoptions_wbtable extends wunderbyte_table {
             return '';
         }
         switch ($values->invisible) {
-            case '0':
+            case MOD_BOOKING_OPTION_VISIBLE:
                 $status = get_string('optionvisible', 'mod_booking');
                 break;
-            case '1':
+            case MOD_BOOKING_OPTION_INVISIBLE:
                 $status = get_string('optioninvisible', 'mod_booking');
                 break;
-            case '2':
+            case MOD_BOOKING_OPTION_VISIBLEWITHLINK:
                 $status = get_string('optionvisibledirectlink', 'mod_booking');
                 break;
         }
@@ -886,9 +924,12 @@ class bookingoptions_wbtable extends wunderbyte_table {
             $ret = implode(' | ', $datestrings);
         } else {
             // Use the renderer to output this column.
+            global $USER;
             $lang = current_language();
+            $timezone = \core_date::get_user_timezone($USER);
+            $timezonetoken = str_replace('/', '_', $timezone);
 
-            $cachekey = "sessiondates$optionid$lang";
+            $cachekey = "sessiondates{$optionid}{$lang}{$timezonetoken}";
             $cache = cache::make($this->cachecomponent, $this->rawcachename);
 
             if (
@@ -1012,7 +1053,7 @@ class bookingoptions_wbtable extends wunderbyte_table {
             booking_check_if_teacher($values));
 
         $ddoptions = [];
-        $ret = '<div class="menubar pr-2" id="action-menu-' . $optionid . '-menubar" role="menubar">';
+        $ret = '<div class="menubar pe-2" id="action-menu-' . $optionid . '-menubar" role="menubar">';
 
         if ($status == MOD_BOOKING_STATUSPARAM_BOOKED) {
             $ret .= html_writer::link(
@@ -1023,7 +1064,7 @@ class bookingoptions_wbtable extends wunderbyte_table {
                 $OUTPUT->pix_icon('t/print', get_string('bookedtext', 'mod_booking')),
                 [
                     'target' => '_blank',
-                    'class' => 'text-primary pr-3',
+                    'class' => 'text-primary pe-3',
                     'aria-label' => get_string('bookedtext', 'mod_booking'),
                 ]
             );
@@ -1423,6 +1464,10 @@ class bookingoptions_wbtable extends wunderbyte_table {
      * @throws coding_exception
      */
     public function col_description($values) {
+        $optionid = $values->id;
+        $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+        $cmid = $settings->cmid;
+        $values->description = placeholders_info::render_text($values->description, $cmid, $optionid);
 
         // If $values->id is missing, we show the values object in debug mode, so we can investigate what happens.
         if (empty($values->id)) {
@@ -1436,8 +1481,6 @@ class bookingoptions_wbtable extends wunderbyte_table {
             $description = $values->description;
         } else {
             $customfieldshortname = get_config("booking", "changedescriptionfield");
-            $optionid = $values->id;
-            $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
             $description = $settings->customfields[$customfieldshortname] ?? "";
         }
         // If we download, we want to show text only without HTML tags.
@@ -1475,7 +1518,7 @@ class bookingoptions_wbtable extends wunderbyte_table {
                         get_string('showdescription', 'mod_booking') . '...</a>
                         </div>
                         <div class="collapse" id="collapseDescription' . $values->id . '">
-                            <div class="card card-body border-1 mt-1 mb-1 mr-3">' . $ret . '</div>
+                            <div class="card card-body border-1 mt-1 mb-1 me-3">' . $ret . '</div>
                         </div>';
                 }
 
@@ -1501,7 +1544,10 @@ class bookingoptions_wbtable extends wunderbyte_table {
         }
 
         // Get userdate for the correct locale and language.
-        $renderedbookingopeningtime = userdate($bookingopeningtime, get_string('strftimedatetime', 'langconfig'));
+        $renderedbookingopeningtime = booking_format_userdate_with_timezone_abbr(
+            $bookingopeningtime,
+            get_string('strftimedatetime', 'langconfig')
+        );
         if ($this->is_downloading()) {
             $ret = $renderedbookingopeningtime;
         } else {
@@ -1525,7 +1571,10 @@ class bookingoptions_wbtable extends wunderbyte_table {
         }
 
         // Get userdate for the correct locale and language.
-        $renderedbookingclosingtime = userdate($bookingclosingtime, get_string('strftimedatetime', 'langconfig'));
+        $renderedbookingclosingtime = booking_format_userdate_with_timezone_abbr(
+            $bookingclosingtime,
+            get_string('strftimedatetime', 'langconfig')
+        );
         if ($this->is_downloading()) {
             $ret = $renderedbookingclosingtime;
         } else {
@@ -1596,5 +1645,27 @@ class bookingoptions_wbtable extends wunderbyte_table {
             return ($completion === null) ? '' : '| ' . $completion . get_string('postprogressstring', 'mod_booking');
         }
         return '';
+    }
+
+    /**
+     * This function is called for each data row to allow processing of columns which do not have a *_cols function.
+     * @param mixed $colname
+     * @param mixed $values
+     * @return mixed
+     */
+    public function other_cols($colname, $values) {
+        // Show the values of customfields if they have been added as column.
+        $settings = singleton_service::get_instance_of_booking_option_settings($values->id);
+        if (isset($settings->customfieldsfortemplates[$colname]['value'])) {
+            if (
+                is_string($settings->customfieldsfortemplates[$colname]['value'])
+                || is_numeric($settings->customfieldsfortemplates[$colname]['value'])
+            ) {
+                return $settings->customfieldsfortemplates[$colname]['value'];
+            } else if (is_array($settings->customfieldsfortemplates[$colname]['value'])) {
+                return implode(', ', $settings->customfieldsfortemplates[$colname]['value']);
+            }
+        }
+        return $values->$colname ?? '';
     }
 }

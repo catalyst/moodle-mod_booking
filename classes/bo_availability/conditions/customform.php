@@ -83,6 +83,16 @@ class customform implements bo_condition {
     }
 
     /**
+     * Reset method to clear the singleton state.
+     *
+     * @return void
+     *
+     */
+    public static function reset_instance(): void {
+        self::$instance = null;
+    }
+
+    /**
      * Constructor.
      *
      * @param ?int $id
@@ -117,6 +127,25 @@ class customform implements bo_condition {
      * @return bool
      */
     public function is_shown_in_mform(): bool {
+        return true;
+    }
+
+    /**
+     * Returns the name of the condition.
+     *
+     * @return string
+     *
+     */
+    public function get_name(): string {
+        return get_string('bocondcustomform', 'mod_booking');
+    }
+
+    /**
+     * Returns whether the condition is skippable or not.
+     *
+     * @return bool
+     */
+    public function is_skippable(): bool {
         return true;
     }
 
@@ -162,9 +191,10 @@ class customform implements bo_condition {
      * This will be used if the conditions should not only block booking...
      * ... but actually hide the conditons alltogether.
      * @param int $userid
+     * @param array $params This is the array with parameters for the sql query.
      * @return array
      */
-    public function return_sql(int $userid = 0): array {
+    public function return_sql(int $userid = 0, &$params = []): array {
 
         return ['', '', '', [], ''];
     }
@@ -464,7 +494,10 @@ class customform implements bo_condition {
             );
         }
 
-        $mform->addElement('html', '<hr class="w-50"/>');
+        $mform->addElement(
+            'html',
+            '<div id="bo_cond_customform_restrict_hr" class="d-flex justify-content-end"><hr class="w-75"/></div>'
+        );
     }
 
     /**
@@ -528,12 +561,21 @@ class customform implements bo_condition {
         // In the future, we will allow for more than one custom form.
         // We create a new form.
         $newform = [];
+        $newformindex = 1;
 
         $key = 'bo_cond_customform_select_' . $formcounter . '_' . $counter;
         while (isset($fromform->{$key})) {
-            $formobject = new stdClass();
+            $formtype = (string)($fromform->{$key} ?? '0');
 
-            $formobject->formtype = $fromform->{$key};
+            // Ignore empty placeholder rows but keep scanning next rows.
+            if ($formtype === '0' || $formtype === '') {
+                $counter++;
+                $key = 'bo_cond_customform_select_' . $formcounter . '_' . $counter;
+                continue;
+            }
+
+            $formobject = new stdClass();
+            $formobject->formtype = $formtype;
 
             $key = 'bo_cond_customform_label_' . $formcounter . '_' . $counter;
             $formobject->label = $fromform->{$key} ?? null;
@@ -547,18 +589,16 @@ class customform implements bo_condition {
             $key = 'bo_cond_customform_enroluserstowaitinglist' . $counter;
             $formobject->enroluserstowaitinglist = $fromform->{$key} ?? null;
 
-            $newform[$counter] = $formobject;
+            // Keep stored keys sequential so runtime identifiers remain stable.
+            $newform[$newformindex] = $formobject;
+            $newformindex++;
 
-            // If the next key is not there, we increase $formcounter, else $counter.
-            $key = 'bo_cond_customform_select_' . $formcounter . '_' . ($counter + 1);
-            if (!empty($fromform->{$key})) {
-                $counter++;
-            } else {
-                // Make sure we start a new form and save this one.
-                $conditionobject->formsarray[$formcounter] = $newform;
-                $newform = [];
-                $formcounter++;
-            }
+            $counter++;
+            $key = 'bo_cond_customform_select_' . $formcounter . '_' . $counter;
+        }
+
+        if (!empty($newform)) {
+            $conditionobject->formsarray[$formcounter] = $newform;
         }
 
         if (empty($conditionobject->formsarray)) {

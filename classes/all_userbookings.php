@@ -674,7 +674,7 @@ class all_userbookings extends \table_sql {
                 ['class' => 'mt-3']
             );
 
-            echo '<div class="singlebutton ml-2">' .
+            echo '<div class="singlebutton ms-2">' .
                 '<input type="submit" class="btn btn-success btn-sm mt-3" name="changepresencestatus" value="' .
                 get_string('confirmpresence', 'booking') . '" /></div>';
         }
@@ -683,6 +683,62 @@ class all_userbookings extends \table_sql {
 
         echo '<hr>';
     }
+    /**
+     * Return certificate issues for the current row, using SQL fallback if aggregated JSON is invalid.
+     *
+     * @param stdClass $values
+     * @return array
+     */
+    private function get_certificates_for_row(stdClass $values): array {
+        global $DB;
+
+        if (!empty($values->certificate)) {
+            $decoded = json_decode($values->certificate);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+            if (is_object($decoded)) {
+                return (array)$decoded;
+            }
+        }
+
+        if (empty($values->userid) || empty($values->optionid)) {
+            return [];
+        }
+
+        $params = [
+            'userid' => (int)$values->userid,
+            'optionid' => (int)$values->optionid,
+        ];
+        $databasetype = $DB->get_dbfamily();
+
+        switch ($databasetype) {
+            case 'postgres':
+                $sql = "
+                    SELECT id, code, expires, timecreated
+                      FROM {tool_certificate_issues}
+                     WHERE userid = :userid
+                       AND (data::jsonb ->> 'bookingoptionid') ~ '^[0-9]+$'
+                       AND (data::jsonb ->> 'bookingoptionid')::int = :optionid
+                     ORDER BY timecreated, id
+                ";
+                break;
+            case 'mysql':
+                $sql = "
+                    SELECT id, code, expires, timecreated
+                      FROM {tool_certificate_issues}
+                     WHERE userid = :userid
+                       AND CAST(JSON_UNQUOTE(JSON_EXTRACT(data, '$.bookingoptionid')) AS UNSIGNED) = :optionid
+                     ORDER BY timecreated, id
+                ";
+                break;
+            default:
+                return [];
+        }
+
+        return array_values($DB->get_records_sql($sql, $params));
+    }
+
     /**
      * Column for latest Certificate.
      *
@@ -696,16 +752,22 @@ class all_userbookings extends \table_sql {
         $cross = '&#x274C; ';
         $now = time();
 
-        if (!isset($values->certificate)) {
+        $certificates = $this->get_certificates_for_row($values);
+        if (empty($certificates)) {
             return "";
         }
 
-        $certificates = json_decode($values->certificate);
         $expiredates = [];
+        $timecreated = [];
+        $code = [];
         foreach ($certificates as $cert) {
             $expiredates[] = $cert->expires;
             $timecreated[] = $cert->timecreated;
             $code[] = $cert->code;
+        }
+
+        if (empty($timecreated) || empty($code)) {
+            return "";
         }
 
         $lastexpiredate = end($expiredates);
@@ -735,10 +797,10 @@ class all_userbookings extends \table_sql {
     public function col_allusercertificates(stdClass $values) {
         global $OUTPUT;
         static $id = 1;
-        if (empty($values->certificate)) {
+        $certificates = $this->get_certificates_for_row($values);
+        if (empty($certificates)) {
             return "";
         }
-        $certificates = json_decode($values->certificate);
         $certdata = [];
         $fullname = "{$values->firstname} {$values->lastname}";
 
@@ -761,5 +823,19 @@ class all_userbookings extends \table_sql {
         ];
         $id++;
         return $OUTPUT->render_from_template('mod_booking/report/allusercertificate_modal', $data);
+    }
+    /**
+     * Column for completed date.
+     *
+     * @param stdClass $values
+     *
+     * @return string
+     *
+     */
+    public function col_completeddate(stdClass $values) {
+        if (isset($values->completeddate)) {
+            return userdate($values->completeddate);
+        }
+        return '';
     }
 }

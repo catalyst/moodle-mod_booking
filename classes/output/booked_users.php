@@ -146,7 +146,8 @@ class booked_users implements renderable, templatable {
                 array_keys($columns),
                 array_values($columns),
                 false,
-                true
+                true,
+                $customfields
             ) : null;
 
         // For optiondate scope, we only show booked users.
@@ -164,7 +165,8 @@ class booked_users implements renderable, templatable {
                 array_values($columns),
                 // Sorting of waiting list only possible if setting to show place is enabled.
                 (bool)get_config('booking', 'waitinglistshowplaceonwaitinglist'),
-                true
+                true,
+                $customfields
             ) : null;
 
             $columns = $class->return_cols_for_tables(MOD_BOOKING_STATUSPARAM_RESERVED);
@@ -540,7 +542,7 @@ class booked_users implements renderable, templatable {
         string $icon,
         string $formname,
         array $data,
-        string $css = 'btn btn-primary btn-sm ml-1'
+        string $css = 'btn btn-primary btn-sm ms-1'
     ): array {
         return [
             'label' => get_string($labelkey, 'mod_booking'),
@@ -563,9 +565,9 @@ class booked_users implements renderable, templatable {
      */
     public static function create_delete_button(): array {
         return [
-            'iclass' => 'fa fa-trash mr-1',
+            'iclass' => 'fa fa-trash me-1',
             'label' => get_string('bookingstrackerdelete', 'mod_booking'),
-            'class' => 'btn btn-danger btn-sm ml-1',
+            'class' => 'btn btn-danger btn-sm ms-1',
             'href' => '#',
             'methodname' => 'delete_checked_booking_answers',
             'nomodal' => false,
@@ -576,6 +578,35 @@ class booked_users implements renderable, templatable {
                 'titlestring' => 'delete',
                 'bodystring' => 'deletecheckedanswersbody',
                 'submitbuttonstring' => 'delete',
+                'component' => 'mod_booking',
+            ],
+        ];
+    }
+
+    /**
+     * Function to create delete button.
+     *
+     * @return array
+     *
+     */
+    public static function create_certificate_button(): array {
+        if (!get_config('booking', 'certificateon')) {
+            return [];
+        }
+        return [
+            'iclass' => 'fa fa-fw fa-certificate',
+            'label' => get_string('bookingstrackertriggercertificate', 'mod_booking'),
+            'class' => 'btn btn-success btn-sm ms-1',
+            'href' => '#',
+            'methodname' => 'trigger_certificate_booking_answers',
+            'nomodal' => false,
+            'selectionmandatory' => true,
+            'id' => -1,
+            'data' => [
+                'id' => 'id',
+                'titlestring' => 'issuecertificate',
+                'bodystring' => 'issuecertificatebody',
+                'submitbuttonstring' => 'apply',
                 'component' => 'mod_booking',
             ],
         ];
@@ -594,7 +625,7 @@ class booked_users implements renderable, templatable {
             'deletedbookings' => get_string('deletedbookings', 'mod_booking'),
             'bookinghistory' => get_string('bookinghistory', 'mod_booking'),
             'optionstoconfirm' => get_string('optionstoconfirm', 'mod_booking'),
-            'previouselybooked' => get_string('previouselybooked', 'mod_booking'),
+            'previouslybooked' => get_string('previouslybooked', 'mod_booking'),
         ];
     }
 }

@@ -42,6 +42,12 @@ use moodle_url;
  */
 class optiondate extends scope_base {
     /**
+     * Scope name.
+     * @var string
+     */
+    public $scope = 'optiondate';
+
+    /**
      * Render users table based on status param
      *
      * @param string $scope
@@ -124,7 +130,7 @@ class optiondate extends scope_base {
 
             $table->actionbuttons[] = [
                 'label' => get_string('presence', 'mod_booking'), // Name of your action button.
-                'class' => 'btn btn-primary btn-sm ml-2',
+                'class' => 'btn btn-primary btn-sm ms-2',
                 'href' => '#', // You can either use the link, or JS, or both.
                 'iclass' => 'fa fa-user-o', // Add an icon before the label.
                 'formname' => 'mod_booking\\form\\optiondates\\modal_change_status',
@@ -144,7 +150,7 @@ class optiondate extends scope_base {
 
             $table->actionbuttons[] = [
                 'label' => get_string('notes', 'mod_booking'), // Name of your action button.
-                'class' => 'btn btn-primary btn-sm ml-1',
+                'class' => 'btn btn-primary btn-sm ms-1',
                 'href' => '#', // You can either use the link, or JS, or both.
                 'iclass' => 'fa fa-pencil', // Add an icon before the label.
                 // phpcs:ignore Squiz.PHP.CommentedOutCode.Found

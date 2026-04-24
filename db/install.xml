@@ -170,6 +170,7 @@
         <FIELD NAME="dayofweek" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="String for reoccurring date series, like 'Friday'."/>
         <FIELD NAME="availability" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Availability restrictions for viewing this booking option, in JSON format. Null if no restrictions."/>
         <FIELD NAME="status" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="If set to 0 - Status is not canceled. 1 - Status is canceld but visible"/>
+        <FIELD NAME="type" TYPE="int" LENGTH="2" NOTNULL="false" SEQUENCE="false" COMMENT="The booking option type."/>
         <FIELD NAME="responsiblecontact" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="credits" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Elective feature."/>
         <FIELD NAME="sortorder" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="Elective feature."/>
@@ -204,6 +205,7 @@
         <FIELD NAME="json" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Supplementary information on this booking option json encoded for max flexibility."/>
         <FIELD NAME="timebooked" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
         <FIELD NAME="pricecategory" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="completeddate" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
@@ -469,6 +471,45 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
     </TABLE>
+    <TABLE NAME="booking_cert_cond" COMMENT="Certificate conditions definitions">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="contextid" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false" COMMENT="The contextid this condition applies to (1=global)"/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Name of the condition"/>
+        <FIELD NAME="filterjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON encoded filter settings"/>
+        <FIELD NAME="logicjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON encoded logic settings"/>
+        <FIELD NAME="actionjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON encoded action settings"/>
+        <FIELD NAME="isactive" TYPE="int" LENGTH="2" NOTNULL="false" DEFAULT="1" SEQUENCE="false"/>
+        <FIELD NAME="useastemplate" TYPE="int" LENGTH="2" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="contextid" UNIQUE="false" FIELDS="contextid"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="booking_cert_cond_item" COMMENT="Items that belong to a certificate condition">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="conditionid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="component" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="area" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="itemid" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="sortorder" TYPE="int" LENGTH="10" NOTNULL="false" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="configjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Optional JSON configuration for item"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="conditionid-sort" UNIQUE="false" FIELDS="conditionid,sortorder"/>
+        <INDEX NAME="component" UNIQUE="false" FIELDS="component"/>
+        <INDEX NAME="area" UNIQUE="false" FIELDS="area"/>
+      </INDEXES>
+    </TABLE>
     <TABLE NAME="booking_subbooking_options" COMMENT="Stores the configured subbookings for individual booking options.">
       <FIELDS>
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
@@ -615,6 +656,26 @@
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
+    </TABLE>
+
+    <TABLE NAME="booking_performance_measurements" COMMENT="Save performance measurements">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="starttime" TYPE="int" LENGTH="20" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="endtime" TYPE="int" LENGTH="20" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="shortcodename" TYPE="char" LENGTH="1333" NOTNULL="true" SEQUENCE="false" COMMENT="The measured shortcode string."/>
+        <FIELD NAME="shortcodehash" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Hash value of a shortcode."/>
+        <FIELD NAME="measurementname" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Name of the measurement."/>
+        <FIELD NAME="actions" TYPE="char" LENGTH="1333" NOTNULL="false" SEQUENCE="false" COMMENT="Comma separated ids of actions"/>
+        <FIELD NAME="note" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Added note for explanation or context"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="hashx" UNIQUE="false" FIELDS="shortcodehash" COMMENT="Hashed value index"/>
+        <INDEX NAME="hashnameendx" UNIQUE="false" FIELDS="shortcodehash, endtime"/>
+      </INDEXES>
     </TABLE>
   </TABLES>
 </XMLDB>

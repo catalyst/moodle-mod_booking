@@ -184,34 +184,36 @@ class coursestarttime extends field_base {
             $selflearningcourselabel = get_config('booking', 'selflearningcourselabel');
         }
 
-        if ($selflearningcourseactive === 1) {
-            $mform->addElement(
-                'static',
-                'selflearningcoursecoursestarttimealert',
-                '',
-                '<div class="alert alert-light">' .
-                    get_string('selflearningcoursecoursestarttimealert', 'mod_booking', $selflearningcourselabel) .
-                '</div>'
-            );
-            $mform->hideIf('selflearningcoursecoursestarttimealert', 'selflearningcourse', 'neq', 1);
-        }
+        if ($mform->elementExists('selflearningcourse')) {
+            if ($selflearningcourseactive === 1) {
+                $mform->addElement(
+                    'static',
+                    'selflearningcoursecoursestarttimealert',
+                    '',
+                    '<div class="alert alert-light">' .
+                        get_string('selflearningcoursecoursestarttimealert', 'mod_booking', $selflearningcourselabel) .
+                    '</div>'
+                );
+                $mform->hideIf('selflearningcoursecoursestarttimealert', 'selflearningcourse', 'neq', 1);
+            }
 
-        $mform->addElement(
-            'date_time_selector',
-            'coursestarttime',
-            get_string('selflearningcoursecoursestarttime', 'mod_booking'),
-            time_handler::set_timeintervall(),
-        );
-        $mform->setType('coursestarttime', PARAM_INT);
-        $mform->setDefault("coursestarttime", time_handler::prettytime(time(), false));
-        $mform->addHelpButton(
-            'coursestarttime',
-            'selflearningcoursecoursestarttime',
-            'mod_booking',
-            '',
-            false,
-            $selflearningcourselabel
-        );
-        $mform->hideIf('coursestarttime', 'selflearningcourse', 'neq', 1);
+            $mform->addElement(
+                'date_time_selector',
+                'coursestarttime',
+                get_string('selflearningcoursecoursestarttime', 'mod_booking'),
+                time_handler::set_timeintervall(),
+            );
+            $mform->setType('coursestarttime', PARAM_INT);
+            $mform->setDefault("coursestarttime", time_handler::prettytime(time(), false));
+            $mform->addHelpButton(
+                'coursestarttime',
+                'selflearningcoursecoursestarttime',
+                'mod_booking',
+                '',
+                false,
+                $selflearningcourselabel
+            );
+            $mform->hideIf('coursestarttime', 'selflearningcourse', 'neq', 1);
+        }
     }
 }

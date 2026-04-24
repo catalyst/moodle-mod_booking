@@ -200,12 +200,15 @@ class booking {
             '\' \''
         );
 
+        // We do not load any deleted, suspended or unconfirmed users.
         $sql = "SELECT * FROM (
                     SELECT u.id, u.firstname, u.lastname, u.email, $fullsql AS fulltextstring
-                    FROM {user} u
-                    WHERE u.deleted = 0
+                      FROM {user} u
+                     WHERE u.deleted = 0
+                       AND u.suspended = 0
+                       AND u.confirmed = 1
                 ) AS fulltexttable";
-        // Check for u.deleted = 0 is important, so we do not load any deleted users!
+
         $params = [];
         if (!empty($query)) {
             // We search for every word extra to get better results.
@@ -1198,7 +1201,12 @@ class booking {
         if (!$context || !has_capability('mod/booking:canseeinvisibleoptions', $context)) {
             // If we have a direct link, we only hide totally invisible options.
             // Also, if the user has already booked and looks at her table, she should see it.
-            if (isset($where['id']) || !empty($userid)) {
+            if (isset($wherearray['id'])) {
+                // If we get one precise settings object, we always fetch it.
+                // Accessibilities need to be handled elsewhere.
+                // This is necessary to make sure we get the object for connected availability conditions.
+                $where = " 1 = 1 ";
+            } else if (!empty($userid)) {
                 $where = " invisible <> 1 ";
             } else {
                 // ... then only show visible options.
@@ -1253,7 +1261,12 @@ class booking {
         // Instead of "where" we return "filter". This is to support the filter functionality of wunderbyte table.
         [$select2, $from2, $filter2, $params2] = booking_option_settings::return_sql_for_teachers();
         [$select3, $from3, $filter3, $params3] = booking_option_settings::return_sql_for_imagefiles();
-        [$select4, $from4, $filter4, $params4, $conditionsql] = bo_info::return_sql_from_conditions($userid ?? 0);
+
+        // When we actually ask for one specific record, we always need to return it and don't apply where conditions.
+        // This is important because of the connected availability conditions.
+        if (empty($wherearray['id'])) {
+            [$select4, $from4, $filter4, $params4, $conditionsql] = bo_info::return_sql_from_conditions($userid ?? 0);
+        }
 
         // The $outerfrom takes all the select from the supplementary selects.
         $outerfrom .= !empty($select1) ? ", $select1 " : '';
@@ -1285,7 +1298,7 @@ class booking {
         $groupby = implode(" , ", $groupbyarray);
 
         // Now we merge all the params arrays.
-        $params = array_merge($params, $params1, $params2, $params3, $params4);
+        $params = array_merge($params, $params1, $params2, $params3, $params4 ?? []);
 
         // We build everything together.
         $from = $outerfrom;
@@ -1404,71 +1417,6 @@ class booking {
         }
 
         return self::get_options_filter_sql(0, 0, '', '*', null, [], $options);
-    }
-
-    /**
-     * Genereate SQL and params array to fetch my options.
-     *
-     * @param int $limitfrom
-     * @param int $limitnum
-     * @param string $searchtext
-     * @param string $fields
-     * @param array $booked
-     * @return array
-     */
-    public function get_my_options_sql(
-        $limitfrom = 0,
-        $limitnum = 0,
-        $searchtext = '',
-        $fields = "bo.*",
-        $booked = [MOD_BOOKING_STATUSPARAM_BOOKED]
-    ) {
-
-        global $DB, $USER;
-
-        $fields = "DISTINCT " . $fields;
-
-        $limit = '';
-        $rsearch = $this->searchparameters($searchtext);
-        $search = $rsearch['query'];
-        $params = array_merge(['bookingid' => $this->id,
-                                    'userid' => $USER->id,
-                                ], $rsearch['params']);
-
-        if ($limitnum != 0) {
-            $limit = " LIMIT {$limitfrom} OFFSET {$limitnum}";
-        }
-
-        [$inorequal, $inparams] = $DB->get_in_or_equal($booked, SQL_PARAMS_NAMED);
-
-        $params = array_merge($params, $inparams);
-
-        $from = "{booking_options} bo
-                JOIN {booking_answers} ba
-                ON ba.optionid=bo.id";
-        $where = "bo.bookingid = :bookingid
-                  AND ba.userid = :userid
-                  AND ba.waitinglist = $inorequal {$search}";
-        if (strlen($searchtext) !== 0) {
-            $from .= "
-                JOIN {customfield_data} cfd
-                ON bo.id=cfd.instanceid
-                JOIN {customfield_field} cff
-                ON cfd.fieldid=cff.id
-                ";
-            // Strip column close.
-            $where = substr($where, 0, -1);
-            // Add another tag.
-            $where .= " OR {$DB->sql_like('cfd.value', ':cfsearchtext', false)}) ";
-            // In a future iteration, we can add the specification in which customfield we want to search.
-            // For From JOIN {customfield_field} cff.
-            // ON cfd.fieldid=cff.id .
-            // And for Where.
-            // AND cff.name like 'fieldname'.
-            $params['cfsearchtext'] = $searchtext;
-        }
-
-        return [$fields, $from, $where, $params];
     }
 
     /**
@@ -1591,7 +1539,7 @@ class booking {
                 $optiontitle,
                 $record->coursestarttime,
                 $record->courseendtime,
-                1,
+                (int)($record->status ?? 0),
                 $link,
                 $bgcolor
             );
@@ -1620,11 +1568,12 @@ class booking {
                         'optiondate' area,
                         bo.id optionid,
                         bo.text,
+                        bo.status,
                         bod.coursestarttime,
                         bod.courseendtime
                     FROM {booking_optiondates} bod
                     JOIN (
-                        SELECT id, text
+                        SELECT id, text, status
                         FROM {booking_options}
                     ) bo
                     ON bod.optionid = bo.id
@@ -1635,6 +1584,7 @@ class booking {
                     'option' area,
                     id optionid,
                     text,
+                    status,
                     coursestarttime,
                     courseendtime
                     FROM {booking_options}
@@ -2250,7 +2200,7 @@ class booking {
             }
 
             // 5. Check full text search columns if there are any custom fields.
-            $columns = empty($tableinstance) ? [] : array_keys($tableinstance->fulltextsearchcolumns);
+            $columns = empty($tableinstance) ? [] : $tableinstance->fulltextsearchcolumns;
             if (in_array($customfield, $columns, true)) {
                 $requiredcustomfields[] = $customfield;
             }

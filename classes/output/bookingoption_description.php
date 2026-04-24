@@ -28,7 +28,6 @@ use context_module;
 use context_system;
 use core_plugin_manager;
 use html_writer;
-use local_wunderbyte_table\local\customfield\wbt_field_controller_info;
 use mod_booking\booking;
 use mod_booking\booking_answers\booking_answers;
 use mod_booking\booking_bookit;
@@ -37,6 +36,7 @@ use mod_booking\booking_option;
 use mod_booking\local\modechecker;
 use mod_booking\option\dates_handler;
 use mod_booking\option\fields\competencies;
+use mod_booking\placeholders\placeholders_info;
 use mod_booking\price;
 use mod_booking\singleton_service;
 use moodle_url;
@@ -194,8 +194,8 @@ class bookingoption_description implements renderable, templatable {
     /** @var array $subpluginstemplatedata */
     private $subpluginstemplatedata = [];
 
-    /** @var bool $showdownloadcheckbox */
-    private $showdownloadcheckbox = false;
+    /** @var bool $showchecklistdownloadbutton */
+    private $showchecklistdownloadbutton = false;
 
     /**
      * Constructor.
@@ -376,13 +376,13 @@ class bookingoption_description implements renderable, templatable {
             }
         }
 
-        if (has_capability('mod/booking:downloadchecklist', $modcontext)) {
+        if (has_capability('mod/booking:downloadchecklist', $modcontext) && get_config('booking', 'showchecklistdownloadbutton')) {
             $checkboxurl = $link = new moodle_url($CFG->wwwroot . '/mod/booking/report.php', [
                 'id' => $cmid,
                 'optionid' => $optionid,
                 'action' => 'downloadchecklist',
             ]);
-            $this->showdownloadcheckbox = $checkboxurl;
+            $this->showchecklistdownloadbutton = $checkboxurl;
         }
 
         // We need this to render a link to manage bookings in the template.
@@ -403,11 +403,40 @@ class bookingoption_description implements renderable, templatable {
             $customfieldshortname = get_config('booking', 'changedescriptionfield');
             $this->description = $settings->customfields[$customfieldshortname] ?? "";
         }
+
+        // In any case, we replace placeholders in the description.
+        $this->description = placeholders_info::render_text(
+            $this->description,
+            $settings->cmid,
+            $settings->id,
+            $user->id,
+            0,
+            0,
+            0,
+            MOD_BOOKING_DESCRIPTION_OPTIONVIEW,
+            null,
+            false
+        );
+
         // Do the same for internal annotation.
         $this->annotation = $settings->annotation;
 
         // Currently, this will only get the description for the current user.
         $this->statusdescription = $bookingoption->get_text_depending_on_status($bookinganswers);
+
+        // We also replace placeholders in the status description.
+        $this->statusdescription = placeholders_info::render_text(
+            $this->statusdescription,
+            $settings->cmid,
+            $settings->id,
+            $user->id,
+            0,
+            0,
+            0,
+            MOD_BOOKING_DESCRIPTION_OPTIONVIEW,
+            null,
+            false
+        );
 
         // Attachments.
         $this->attachments = booking_option::render_attachments($optionid, 'optionview-bookingoption-attachments mb-3');
@@ -490,13 +519,19 @@ class bookingoption_description implements renderable, templatable {
         if (empty($settings->bookingopeningtime)) {
             $this->bookingopeningtime = null;
         } else {
-            $this->bookingopeningtime = userdate($settings->bookingopeningtime, get_string('strftimedatetime', 'langconfig'));
+            $this->bookingopeningtime = booking_format_userdate_with_timezone_abbr(
+                $settings->bookingopeningtime,
+                get_string('strftimedatetime', 'langconfig')
+            );
         }
 
         if (empty($settings->bookingclosingtime)) {
             $this->bookingclosingtime = null;
         } else {
-            $this->bookingclosingtime = userdate($settings->bookingclosingtime, get_string('strftimedatetime', 'langconfig'));
+            $this->bookingclosingtime = booking_format_userdate_with_timezone_abbr(
+                $settings->bookingclosingtime,
+                get_string('strftimedatetime', 'langconfig')
+            );
         }
 
         if (isset($settings->customfields)) {
@@ -672,7 +707,7 @@ class bookingoption_description implements renderable, templatable {
             'userid' => $this->userid,
             'description' => format_text($this->description),
             'attachments' => $this->attachments,
-            'statusdescription' => $this->statusdescription,
+            'statusdescription' => format_text($this->statusdescription),
             'imageurl' => $this->imageurl,
             'location' => $this->location,
             'address' => $this->address,
@@ -703,7 +738,7 @@ class bookingoption_description implements renderable, templatable {
             'competencies' => $this->competencies,
             'competencyheader' => $this->competencyheader,
             'subpluginstemplatedata' => $this->subpluginstemplatedata,
-            'showdownloadcheckbox' => $this->showdownloadcheckbox,
+            'showchecklistdownloadbutton' => $this->showchecklistdownloadbutton,
         ];
 
         if (!empty($this->timeremaining)) {
@@ -717,16 +752,25 @@ class bookingoption_description implements renderable, templatable {
         // We return all the customfields of the option.
         // But we make sure, the shortname of a customfield does not conflict with an existing key.
         if ($this->customfields) {
+            $settings = singleton_service::get_instance_of_booking_option_settings($this->optionid);
             foreach ($this->customfields as $key => $value) {
                 if (!isset($returnarray[$key])) {
-                    // Make sure, print value for arrays will be converted to string.
-                    $printvalue = is_array($value) ? implode(',', $value) : $value;
-
-                    // Get the correct field controller from Wunderbyte table.
-                    $fieldcontroller = wbt_field_controller_info::get_instance_by_shortname($key);
-
-                    // Get the option value from field controller.
-                    $returnarray[$key] = $fieldcontroller->get_option_value_by_key($printvalue);
+                    if (
+                        isset($settings->customfieldsfortemplates[$key]["value"])
+                    ) {
+                        if (
+                            is_string($settings->customfieldsfortemplates[$key]['value'])
+                            || is_numeric($settings->customfieldsfortemplates[$key]['value'])
+                        ) {
+                            $returnarray[$key] = $settings->customfieldsfortemplates[$key]['value'];
+                        } else if (is_array($settings->customfieldsfortemplates[$key]['value'])) {
+                            $returnarray[$key] = implode(', ', $settings->customfieldsfortemplates[$key]['value']);
+                        }
+                        // For some reason, format_string does not work, so we do it with format_text and remove the outer div.
+                        $returnarray[$key] = format_text($returnarray[$key]);
+                        // Remove the first <div...> and the last </div>.
+                        $returnarray[$key] = preg_replace('/^<div[^>]*>|(<\/div>)$/i', '', $returnarray[$key]);
+                    }
                 }
             }
         }
@@ -761,7 +805,7 @@ class bookingoption_description implements renderable, templatable {
      * @return bool true if invisible, else false
      */
     public function is_invisible(): bool {
-        if (isset($this->invisible) && $this->invisible == 1) {
+        if (isset($this->invisible) && $this->invisible == MOD_BOOKING_OPTION_INVISIBLE) {
             $ret = true;
         } else {
             $ret = false;

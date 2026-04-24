@@ -63,7 +63,7 @@ class allowedtobookininstance implements bo_condition {
      *
      * @var object
      */
-    private static $instances = null;
+    private static $instance = null;
 
     /**
      * Singleton instance.
@@ -73,10 +73,38 @@ class allowedtobookininstance implements bo_condition {
      *
      */
     public static function instance(?int $id = null): object {
-        if (!isset(self::$instances[$id])) {
-            self::$instances[$id] = new self($id);
+        if (!isset(self::$instance[$id])) {
+            self::$instance[$id] = new self($id);
         }
-        return self::$instances[$id];
+        return self::$instance[$id];
+    }
+    /**
+     * Returns the name of the condition.
+     *
+     * @return string
+     *
+     */
+    public function get_name(): string {
+        return get_string('bocondallowedtobookininstance', 'mod_booking');
+    }
+
+    /**
+     * Returns whether the condition is skippable or not.
+     *
+     * @return bool
+     */
+    public function is_skippable(): bool {
+        return true;
+    }
+
+    /**
+     * Reset method to clear the singleton state.
+     *
+     * @return void
+     *
+     */
+    public static function reset_instance(): void {
+        self::$instance = null;
     }
 
     /**
@@ -158,9 +186,10 @@ class allowedtobookininstance implements bo_condition {
      * This will be used if the conditions should not only block booking...
      * ... but actually hide the conditons alltogether.
      * @param int $userid
+     * @param array $params This is the array with parameters for the sql query.
      * @return array
      */
-    public function return_sql(int $userid = 0): array {
+    public function return_sql(int $userid = 0, &$params = []): array {
 
         return ['', '', '', [], ''];
     }
@@ -340,7 +369,10 @@ class allowedtobookininstance implements bo_condition {
             );
         }
 
-        $mform->addElement('html', '<hr class="w-50"/>');
+        $mform->addElement(
+            'html',
+            '<div id="bo_cond_allowedtobookininstance_restrict_hr" class="d-flex justify-content-end"><hr class="w-75"/></div>'
+        );
     }
 
     /**

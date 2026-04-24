@@ -41,6 +41,8 @@ use mod_booking\booking;
 use mod_booking\form\dynamicdeputyselect;
 use mod_booking\local\shortcode_filterfield;
 use mod_booking\output\booked_users;
+use mod_booking\performance\performance_facade;
+use mod_booking\performance\performance_measurer;
 use mod_booking\shortcodes_handler;
 use mod_booking\customfield\booking_handler;
 use mod_booking\local\modechecker;
@@ -60,6 +62,73 @@ require_once($CFG->dirroot . '/mod/booking/lib.php');
  * Deals with local_shortcodes regarding booking.
  */
 class shortcodes {
+    /**
+     * Reserve a unique SQL named-parameter key in the target params array.
+     *
+     * @param array $params
+     * @param string $prefix
+     * @return string
+     */
+    private static function reserve_param_key(array &$params, string $prefix): string {
+        $index = 0;
+        do {
+            $candidate = $prefix . $index;
+            $index++;
+        } while (array_key_exists($candidate, $params));
+
+        return $candidate;
+    }
+
+    /**
+     * Generate a prefix that does not collide with existing named params.
+     *
+     * @param array $params
+     * @param string $baseprefix
+     * @return string
+     */
+    private static function reserve_param_prefix(array $params, string $baseprefix): string {
+        $index = 0;
+        do {
+            $prefix = $baseprefix . $index . '_';
+            $index++;
+            $collision = false;
+            foreach (array_keys($params) as $key) {
+                if (strpos((string)$key, $prefix) === 0) {
+                    $collision = true;
+                    break;
+                }
+            }
+        } while ($collision);
+
+        return $prefix;
+    }
+
+    /**
+     * Merge named parameters into target params and rename collisions in SQL.
+     *
+     * @param string $sql
+     * @param array $targetparams
+     * @param array $incomingparams
+     * @return string
+     */
+    private static function merge_params_into_sql(string $sql, array &$targetparams, array $incomingparams): string {
+        foreach ($incomingparams as $key => $value) {
+            $key = (string)$key;
+            if (!array_key_exists($key, $targetparams)) {
+                $targetparams[$key] = $value;
+                continue;
+            }
+
+            $newkey = self::reserve_param_key($targetparams, $key . '_');
+            $targetparams[$newkey] = $value;
+
+            $pattern = '/:' . preg_quote($key, '/') . '(?![A-Za-z0-9_])/';
+            $sql = preg_replace($pattern, ':' . $newkey, $sql);
+        }
+
+        return $sql;
+    }
+
     /**
      * This shortcode shows a list of booking options, which have a booking customfield...
      * ... with the shortname "recommendedin" and the value set to the shortname of the course...
@@ -141,10 +210,21 @@ class shortcodes {
             unset($table->subcolumns['rightside']);
         }
 
-        $additionalwhere = " (recommendedin = '$course->shortname'
-                            OR recommendedin LIKE '$course->shortname,%'
-                            OR recommendedin LIKE '%,$course->shortname'
-                            OR recommendedin LIKE '%,$course->shortname,%') ";
+        $recommendedparams = [];
+        $recommendedeq = self::reserve_param_key($recommendedparams, 'recommendedin_eq_');
+        $recommendedstart = self::reserve_param_key($recommendedparams, 'recommendedin_start_');
+        $recommendedend = self::reserve_param_key($recommendedparams, 'recommendedin_end_');
+        $recommendedmiddle = self::reserve_param_key($recommendedparams, 'recommendedin_middle_');
+
+        $recommendedparams[$recommendedeq] = $course->shortname;
+        $recommendedparams[$recommendedstart] = $course->shortname . ',%';
+        $recommendedparams[$recommendedend] = '%,' . $course->shortname;
+        $recommendedparams[$recommendedmiddle] = '%,' . $course->shortname . ',%';
+
+        $additionalwhere = " (recommendedin = :$recommendedeq
+                    OR recommendedin LIKE :$recommendedstart
+                    OR recommendedin LIKE :$recommendedend
+                    OR recommendedin LIKE :$recommendedmiddle) ";
 
         [$fields, $from, $where, $params, $filter] =
                 booking::get_options_filter_sql(
@@ -163,6 +243,7 @@ class shortcodes {
                 );
 
         self::applyallarg($args, $where);
+        $where = self::merge_params_into_sql($where, $params, $recommendedparams);
 
         $table->set_filter_sql($fields, $from, $where, $filter, $params);
 
@@ -170,8 +251,9 @@ class shortcodes {
             $out = $table->outhtml($perpage, true);
         } catch (Throwable $e) {
             $out = get_string('shortcode:error', 'mod_booking');
-
-            if ($CFG->debug > 0 && has_capability('moodle/site:config', context_system::instance())) {
+            /** @var \context $syscontext */
+            $syscontext = context_system::instance();
+            if ($CFG->debug > 0 && has_capability('moodle/site:config', $syscontext)) {
                 $out .= $e->getMessage();
             }
         }
@@ -325,8 +407,9 @@ class shortcodes {
             $out = $table->outhtml($perpage, true);
         } catch (Throwable $e) {
             $out = get_string('shortcode:error', 'mod_booking');
-
-            if ($CFG->debug > 0 && has_capability('moodle/site:config', context_system::instance())) {
+            /** @var \context $syscontext */
+            $syscontext = context_system::instance();
+            if ($CFG->debug > 0 && has_capability('moodle/site:config', $syscontext)) {
                 $out .= $e->getMessage();
             }
         }
@@ -337,7 +420,7 @@ class shortcodes {
     /**
      * Add customfield filter as defined shortnames in args to table.
      *
-     * @param mixed $table
+     * @param wunderbyte_table $table
      * @param array $args
      *
      * @return void
@@ -540,8 +623,9 @@ class shortcodes {
             $out = $table->outhtml($perpage, true);
         } catch (Throwable $e) {
             $out = get_string('shortcode:error', 'mod_booking');
-
-            if ($CFG->debug > 0 && has_capability('moodle/site:config', context_system::instance())) {
+            /** @var \context $syscontext */
+            $syscontext = context_system::instance();
+            if ($CFG->debug > 0 && has_capability('moodle/site:config', $syscontext)) {
                 $out .= $e->getMessage();
             }
         }
@@ -581,7 +665,8 @@ class shortcodes {
             // Only if the user has the right to see the link back, we show it.
             $settings = singleton_service::get_instance_of_booking_option_settings($option->id);
 
-            if ($option->invisible == 1) {
+            if ($option->invisible == MOD_BOOKING_OPTION_INVISIBLE) {
+                /** @var \context $context */
                 $context = context_module::instance($settings->cmid);
                 if (!has_capability('mod/booking:view', $context)) {
                     continue;
@@ -766,13 +851,11 @@ class shortcodes {
                     $table
                 );
 
-        $params = array_merge($tempparams, $params);
+        $where = self::merge_params_into_sql($where, $params, $tempparams);
         self::applyallarg($args, $where);
 
         if (!empty($additionalparams)) {
-            foreach ($additionalparams as $key => $value) {
-                $params[$key] = $value;
-            }
+            $where = self::merge_params_into_sql($where, $params, $additionalparams);
         }
         $table->set_filter_sql($fields, $from, $where, $filter, $params);
 
@@ -794,8 +877,9 @@ class shortcodes {
             $out = $table->outhtml($perpage, true);
         } catch (Throwable $e) {
             $out = get_string('shortcode:error', 'mod_booking');
-
-            if ($CFG->debug > 0 && has_capability('moodle/site:config', context_system::instance())) {
+            /** @var \context $syscontext */
+            $syscontext = context_system::instance();
+            if ($CFG->debug > 0 && has_capability('moodle/site:config', $syscontext)) {
                 $out .= $e->getMessage();
                 $out .= $e->getTraceAsString();
             }
@@ -870,10 +954,6 @@ class shortcodes {
                     $statusarray,
                     $additionalwhere
                 );
-        if (!empty($args['futureonly'])) {
-            $startoftoday = time();
-            $where .= " AND courseendtime > $startoftoday ";
-        }
         $table->set_filter_sql($fields, $from, $where, $filter, $params);
         $possibleoptions = [
             "description",
@@ -939,7 +1019,6 @@ class shortcodes {
 
         // Set common table options requirelogin, sortorder, sortby.
         self::set_common_table_options_from_arguments($table, $args);
-
         [$fields, $from, $where, $params, $filter] =
                 booking::get_options_filter_sql(
                     0,
@@ -955,7 +1034,10 @@ class shortcodes {
                     '',
                     $table
                 );
-
+        if (!empty($args['futureonly'])) {
+            $startoftoday = time();
+            $where .= " AND courseendtime > $startoftoday ";
+        }
         $table->set_filter_sql($fields, $from, $where, $filter, $params);
 
         $table->define_cache('mod_booking', 'mybookingoptionstable');
@@ -964,8 +1046,9 @@ class shortcodes {
             $out = $table->outhtml($perpage, true);
         } catch (Throwable $e) {
             $out = get_string('shortcode:error', 'mod_booking');
-
-            if ($CFG->debug > 0 && has_capability('moodle/site:config', context_system::instance())) {
+            /** @var \context $syscontext */
+            $syscontext = context_system::instance();
+            if ($CFG->debug > 0 && has_capability('moodle/site:config', $syscontext)) {
                 $out .= $e->getMessage();
             }
         }
@@ -1116,8 +1199,9 @@ class shortcodes {
             $out = $table->outhtml($perpage, true);
         } catch (Throwable $e) {
             $out = get_string('shortcode:error', 'mod_booking');
-
-            if ($CFG->debug > 0 && has_capability('moodle/site:config', context_system::instance())) {
+            /** @var \context $syscontext */
+            $syscontext = context_system::instance();
+            if ($CFG->debug > 0 && has_capability('moodle/site:config', $syscontext)) {
                 $out .= $e->getMessage();
             }
         }
@@ -1147,8 +1231,9 @@ class shortcodes {
         if ($error['error'] === 1) {
             return $error['message'];
         }
-
-        if (!is_siteadmin() && !has_capability('mod/booking:executebulkoperations', context_system::instance())) {
+        /** @var \context $syscontext */
+        $syscontext = context_system::instance();
+        if (!is_siteadmin() && !has_capability('mod/booking:executebulkoperations', $syscontext)) {
             return get_string('nopermissiontoaccesscontent', 'mod_booking');
         }
 
@@ -1157,6 +1242,9 @@ class shortcodes {
         cache_helper::purge_by_event('changesinwunderbytetable');
         // Add the arguments to make sure cache is built correctly.
         $argsstring = bin2hex(implode($args));
+
+        \mod_booking\local\performance\performance_facade::start_measurement('Building table');
+
         $table = new bulkoperations_table(bin2hex(random_bytes(8)) . '_optionbulkoperationstable_' . $argsstring);
         $columns = [
         'id' => get_string('id', 'local_wunderbyte_table'),
@@ -1191,6 +1279,8 @@ class shortcodes {
         $table->define_headers(array_values($columns));
         $table->define_columns(array_keys($columns));
         $table->addcheckboxes = true;
+
+        \mod_booking\local\performance\performance_facade::end_measurement('Building table');
 
         try {
             $filtercolumns = self::apply_bulkoperations_filter($table, $columns, $args);
@@ -1262,13 +1352,86 @@ class shortcodes {
             $out = $table->outhtml($perpage, true);
         } catch (Throwable $e) {
             $out = get_string('shortcode:error', 'mod_booking');
-
-            if ($CFG->debug > 0 && has_capability('moodle/site:config', context_system::instance())) {
+            /** @var \context $syscontext */
+            $syscontext = context_system::instance();
+            if ($CFG->debug > 0 && has_capability('moodle/site:config', $syscontext)) {
                 $out .= $e->getMessage();
             }
         }
 
         return $out;
+    }
+
+    /**
+     * List bookingoptions with checkboxes and buttons to trigger executeservice.
+     *
+     * @param string $shortcode
+     * @param array $args
+     * @param string|null $content
+     * @param object $env
+     * @param Closure $next
+     * @return string
+     */
+    public static function executeservice($shortcode, $args, $content, $env, $next): string {
+        global $CFG;
+
+        // Get rid of quotation marks.
+        self::fix_args($args);
+
+        $requiredargs = [];
+        $error = shortcodes_handler::validatecondition($shortcode, $args, true, $requiredargs);
+        if ($error['error'] === 1) {
+            return $error['message'];
+        }
+
+        // We really only allow admins to do this.
+        if (
+            !is_siteadmin()
+            || empty($args['service'])
+        ) {
+            return get_string('nopermissiontoaccesscontent', 'mod_booking');
+        }
+
+        $serviceclass = $args['service'];
+        unset($args['service']);
+
+        $serviceclass::execute(...array_values($args));
+
+        return '';
+    }
+
+    /**
+     * Renders all completed booking options of a condition as a list.
+     * @param string $shortcode
+     * @param array $args
+     * @param string|null $content
+     * @param object $env
+     * @param Closure $next
+     * @return string
+     *
+     */
+    public static function bookingoptionsfromcondition($shortcode, $args, $content, $env, $next) {
+        global $DB;
+        [$userid, $optionid, $conditionid] = singleton_service::get_temp_values_for_certificates();
+        if (empty($userid)) {
+            return "PLACEHOLDER";
+        }
+        $optionids = $DB->get_fieldset_select(
+            'booking_cert_cond_item',
+            'itemid',
+            'conditionid = :conditionid AND area = :area AND component = :component',
+            ['conditionid' => $conditionid, 'area' => 'bookingoption', 'component' => 'mod_booking']
+        );
+        $texts = [];
+        foreach ($optionids as $optionid) {
+            $settings = singleton_service::get_instance_of_booking_option_settings($optionid);
+            $bookinganswer = singleton_service::get_instance_of_booking_answers($settings);
+            $hascompleted = $bookinganswer->is_activity_completed($userid);
+            if ($hascompleted) {
+                $texts[] = $settings->text;
+            }
+        }
+        return implode("<br>", $texts);
     }
 
     /**
@@ -1382,16 +1545,21 @@ class shortcodes {
         ?string $uniquetablename = null,
         array $args = []
     ) {
+        /** @var \context $syscontext */
+        $syscontext = context_system::instance();
+
         if ($booking && !empty($booking->cmid)) {
+            /** @var \context $context */
             $context = context_module::instance($booking->cmid);
         } else {
+            /** @var \context $context */
             $context = context_system::instance();
         }
         // Important security check.
         // The user must have the cashier capability to fetch data of other users.
         if (
             class_exists('local_shopping_cart\shopping_cart')
-            && has_capability('local/shopping_cart:cashier', context_system::instance())
+            && has_capability('local/shopping_cart:cashier', $syscontext)
             // This check actually corresponds to the check in booking_bookit currently line 126.
             // It allows overriding a blocking condition under some circumstances.
             || has_capability('mod/booking:bookforothers', $context)
@@ -1419,7 +1587,7 @@ class shortcodes {
     /**
      * Add filter displaying the possible instances of mod booking.
      *
-     * @param mixed $table reference to table
+     * @param wunderbyte_table $table reference to table
      *
      * @return void
      *
@@ -1438,6 +1606,30 @@ class shortcodes {
     }
 
     /**
+     * Add filter for booking option types.
+     *
+     * @param wunderbyte_table $table reference to table
+     * @param int $cmid cmid of the booking instance
+     *
+     * @return void
+     *
+     */
+    public static function apply_bookingoptiontype_filter(&$table, $cmid): void {
+        $optiontypefilter = new standardfilter('type', get_string('type', 'mod_booking'));
+        $selflearningcourselabel = get_config('booking', 'selflearningcourselabel');
+        if (empty(trim($selflearningcourselabel))) {
+            $selflearningcourselabel = get_string('selflearningcourse', 'mod_booking');
+        }
+        $optiontypefilter->add_options(
+            [
+                0 => get_string('optiontypefilternormal', 'mod_booking'),
+                1 => $selflearningcourselabel,
+            ]
+        );
+        $table->add_filter($optiontypefilter);
+    }
+
+    /**
      * Setting options from shortcodes arguments common for all children of wunderbyte_table .
      *
      * @param wunderbyte_table $table reference to table
@@ -1447,18 +1639,23 @@ class shortcodes {
      */
     public static function set_common_table_options_from_arguments(&$table, $args): void {
         $defaultorder = SORT_ASC; // Default.
+        $sortby = null;
         if (!empty($args['sortorder'])) {
             if (strtolower($args['sortorder']) === "desc") {
                 $defaultorder = SORT_DESC;
             }
         }
         if (!empty($args['sortby'])) {
+            $sortby = clean_param((string)$args['sortby'], PARAM_ALPHANUMEXT);
+        }
+
+        if (!empty($sortby)) {
             if (
-                !isset($table->columns[$args['sortby']])
+                !isset($table->columns[$sortby])
             ) {
-                $table->define_columns([$args['sortby']]);
+                $table->define_columns([$sortby]);
             }
-            $table->sortable(true, $args['sortby'], $defaultorder);
+            $table->sortable(true, $sortby, $defaultorder);
         } else {
             $table->sortable(true, 'text', $defaultorder);
         }
@@ -1520,19 +1717,32 @@ class shortcodes {
         array &$tempparamsarray = [],
         array $columnfilters = []
     ) {
-
-        global $DB;
         $customfields = booking_handler::get_customfields();
         $filterfields = array_merge($customfields, $columnfilters);
+        $newparamname = static function (string $prefix) use (&$tempparamsarray): string {
+            return self::reserve_param_key($tempparamsarray, $prefix);
+        };
 
         // Set given customfields (shortnames) as arguments.
-        $additionalwhere = '';
+        $additionalconditions = [];
         if (!empty($filterfields) && !empty($args)) {
             foreach ($args as $key => $value) {
                 foreach ($filterfields as $customfield) {
+                    $shortname = (string)($customfield->shortname ?? '');
+                    if ($shortname === '') {
+                        continue;
+                    }
+                    // Only allow safe identifier characters for dynamic SQL field names.
+                    if (clean_param($shortname, PARAM_ALPHANUMEXT) !== $shortname) {
+                        continue;
+                    }
+
+                    // The notkey is for exclusion rather than inclusion.
+                    $notkey = $shortname . '-not' == $key;
                     if (
-                        $customfield->shortname == $key
-                        || 'columnfilter_' . $customfield->shortname == $key
+                        $shortname == $key
+                        || $notkey // Also povide for excluding a value via -not.
+                        || 'columnfilter_' . $shortname == $key
                     ) {
                         $configdata = json_decode($customfield->configdata ?? '[]');
 
@@ -1540,43 +1750,58 @@ class shortcodes {
                             !empty($configdata->multiselect)
                             || (isset($customfield->type) && $customfield->type == 'multiselect')
                         ) {
-                            if (!empty($additionalwhere)) {
-                                $additionalwhere .= " AND ";
-                            }
-
-                            $values = explode(',', $value);
-
-                            if (!empty($values)) {
-                                $additionalwhere .= " ( ";
-                            }
+                            $values = explode(',', (string)$value);
+                            $multiselectconditions = [];
 
                             foreach ($values as $vkey => $vvalue) {
                                 $vvalue = trim($vvalue);
-                                if ($vkey > 0) {
-                                    $additionalwhere .= ' OR ';
+                                if ($vvalue === '') {
+                                    continue;
                                 }
-                                $additionalwhere .= "(
-                                    {$customfield->shortname} = '$vvalue'
-                                    OR {$customfield->shortname} LIKE '$vvalue,%'
-                                    OR {$customfield->shortname} LIKE '%,$vvalue'
-                                    OR {$customfield->shortname} LIKE '%,$vvalue,%'
+
+                                $operator = $notkey ? 'AND' : 'OR';
+                                $like = $notkey ? 'NOT LIKE' : 'LIKE';
+                                $equals = $notkey ? '<>' : '=';
+
+                                $eqparam = $newparamname('cfms_eq_');
+                                $startparam = $newparamname('cfms_start_');
+                                $endparam = $newparamname('cfms_end_');
+                                $midparam = $newparamname('cfms_mid_');
+
+                                $tempparamsarray[$eqparam] = $vvalue;
+                                $tempparamsarray[$startparam] = $vvalue . ',%';
+                                $tempparamsarray[$endparam] = '%,' . $vvalue;
+                                $tempparamsarray[$midparam] = '%,' . $vvalue . ',%';
+
+                                $multiselectconditions[] = "(
+                                    $shortname $equals :$eqparam
+                                    $operator $shortname $like :$startparam
+                                    $operator $shortname $like :$endparam
+                                    $operator $shortname $like :$midparam
                                 )";
                             }
 
-                            if (!empty($values)) {
-                                $additionalwhere .= " ) ";
+                            if (!empty($multiselectconditions)) {
+                                $joinoperator = $notkey ? ' AND ' : ' OR ';
+                                $additionalconditions[] = '( ' . implode($joinoperator, $multiselectconditions) . ' )';
                             }
+                        } else if ($notkey == true) {
+                            $argument = strip_tags((string)$value);
+                            $argument = trim($argument);
+                            $paramname = $newparamname('cfnot_');
+                            $tempparamsarray[$paramname] = $argument;
+                            $additionalconditions[] = " ($shortname <> :$paramname) ";
                         } else {
-                            $argument = strip_tags($value);
+                            $argument = strip_tags((string)$value);
                             $argument = trim($argument);
                             if (
                                 !empty($args['cfinclude'])
                             ) {
-                                $additionalwhere .= !empty($additionalwhere) ? '' : ' 1 = 1';
-                                $tempwherearray = [$customfield->shortname => $argument];
-                                booking::apply_wherearray($additionalwhere, $tempwherearray, $tempparamsarray, 1000);
+                                $paramname = $newparamname('cfinc_');
+                                $tempparamsarray[$paramname] = $argument;
+                                $additionalconditions[] = " ($shortname = :$paramname) ";
                             } else {
-                                $wherearray[$customfield->shortname] = $argument;
+                                $wherearray[$shortname] = $argument;
                             }
                         }
                         break;
@@ -1584,8 +1809,9 @@ class shortcodes {
                 }
             }
         }
-        if (!empty($additionalwhere)) {
-            $additionalwhere = " ( $additionalwhere ) ";
+        $additionalwhere = '';
+        if (!empty($additionalconditions)) {
+            $additionalwhere = ' ( ' . implode(' AND ', $additionalconditions) . ' ) ';
         }
 
         return $additionalwhere;
@@ -1631,9 +1857,10 @@ class shortcodes {
                     $bookings[] = $booking->id;
                 }
             }
-            [$inorequal, $tempparams] = $DB->get_in_or_equal($bookings, SQL_PARAMS_NAMED);
+            $prefix = self::reserve_param_prefix($params ?? [], 'cmid_');
+            [$inorequal, $tempparams] = $DB->get_in_or_equal($bookings, SQL_PARAMS_NAMED, $prefix);
             $additionalwhere = " (bookingid $inorequal) ";
-            $params = array_merge($tempparams, $params ?? []);
+            $params = array_merge($params ?? [], $tempparams);
         }
         if (empty($additionalwhere)) {
             $additionalwhere = " ( bookingid > 0 ) ";
@@ -1750,7 +1977,9 @@ class shortcodes {
             && !empty($args['deputyselect'])
             && !empty(get_config('bookingextension_confirmation_supervisor', 'deputy'))
         ) {
-            if (has_capability('mod/booking:assigndeputies', context_system::instance())) {
+            /** @var \context $syscontext */
+            $syscontext = context_system::instance();
+            if (has_capability('mod/booking:assigndeputies', $syscontext)) {
                 $data->deputyselect = 1;
             }
             $data->deputydisplay = dynamicdeputyselect::get_display_deputies_data();
@@ -1840,6 +2069,11 @@ class shortcodes {
         } else {
             $scope = 'supervisorteam';
         }
+        if (!empty($args['cfinclude'])) {
+            $customfields = explode(',', $args['cfinclude']);
+        } else {
+            $customfields = [];
+        }
         $data = new booked_users(
             $scope,
             0,
@@ -1849,7 +2083,11 @@ class shortcodes {
             false, // Users on notify list.
             false, // Deleted users.
             false, // Booking history.
-            false // Options to confirm.
+            false, // Options to confirm.
+            false,
+            0,
+            false,
+            $customfields,
         );
 
         /** @var renderer $renderer */

@@ -26,6 +26,7 @@
 use mod_booking\bo_availability\conditions\customform;
 use mod_booking\booking_answers\booking_answers;
 use mod_booking\booking_option;
+use mod_booking\local\certificate_conditions\certificate_conditions;
 use mod_booking\option\fields\sharedplaces;
 use mod_booking\output\booked_users;
 use mod_booking\output\eventslist;
@@ -615,6 +616,33 @@ if (!$tableallbookings->is_downloading()) {
         'id, shortname, name'
     );
 
+    $optionhascertificate = !empty(booking_option::get_value_of_json_by_key($optionid, 'certificate'));
+    $optionistargetedbycondition = certificate_conditions::option_is_targeted_by_condition((int)$optionid);
+    $optionhasissuedcertificates = false;
+    if (class_exists('tool_certificate\certificate')) {
+        $databasetype = $DB->get_dbfamily();
+        switch ($databasetype) {
+            case 'postgres':
+                $existssql = "
+                    SELECT 1
+                      FROM {tool_certificate_issues} tci
+                     WHERE (tci.data::jsonb ->> 'bookingoptionid') ~ '^[0-9]+$'
+                       AND (tci.data::jsonb ->> 'bookingoptionid')::int = :optionid
+                ";
+                $optionhasissuedcertificates = $DB->record_exists_sql($existssql, ['optionid' => (int)$optionid]);
+                break;
+            case 'mysql':
+                $existssql = "
+                    SELECT 1
+                      FROM {tool_certificate_issues} tci
+                     WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(tci.data, '$.bookingoptionid')) AS UNSIGNED) = :optionid
+                ";
+                $optionhasissuedcertificates = $DB->record_exists_sql($existssql, ['optionid' => (int)$optionid]);
+                break;
+        }
+    }
+    $showcertificatecolumns = $optionhascertificate || $optionistargetedbycondition || $optionhasissuedcertificates;
+
     foreach ($responsesfields as $value) {
         switch ($value) {
             case 'completed':
@@ -697,16 +725,20 @@ if (!$tableallbookings->is_downloading()) {
                 $headers[] = get_string('email', 'mod_booking');
                 break;
             case 'certificate':
-                if (booking_option::get_value_of_json_by_key($optionid, 'certificate')) {
+                if ($showcertificatecolumns) {
                     $headers[] = get_string('certificatecolheader', 'mod_booking');
                     $columns[] = 'certificate';
                 }
                 break;
             case 'allusercertificates':
-                if (booking_option::get_value_of_json_by_key($optionid, 'certificate')) {
+                if ($showcertificatecolumns) {
                     $headers[] = get_string('allusercertificates', 'mod_booking');
                     $columns[] = 'allusercertificates';
                 }
+                break;
+            case 'completeddate':
+                $headers[] = get_string('completeddate', component: 'mod_booking');
+                $columns[] = 'completeddate';
                 break;
         }
     }
@@ -799,7 +831,6 @@ if (!$tableallbookings->is_downloading()) {
                                 'id', tci.id,
                                 'code', tci.code,
                                 'expires', tci.expires,
-                                'data', data,
                                 'timecreated', timecreated
                             )
                         ) AS certificate
@@ -822,7 +853,6 @@ if (!$tableallbookings->is_downloading()) {
                                     'id', tci.id,
                                     'code', tci.code,
                                     'expires', tci.expires,
-                                    'data', tci.data,
                                     'timecreated', tci.timecreated
                                 )
                             ) AS certificate
@@ -856,6 +886,7 @@ if (!$tableallbookings->is_downloading()) {
             ba.waitinglist,
             ba.notes,
             ba.places,
+            ba.completeddate,
             \'\' otheroptions,
             ba.numrec' . $customfields . $shoppingcartfields . $certificatefields;
     $from = ' {booking_answers} ba
@@ -974,7 +1005,7 @@ if (!$tableallbookings->is_downloading()) {
         );
         $actionbuttonstop .= "<span>" .
             html_writer::link($url, '<i class="fa fa-users fa-fw" aria-hidden="true"></i>&nbsp;' .
-                get_string('bookotherusers', 'booking'), ['class' => 'btn btn-primary btn-sm mr-2']) .
+                get_string('bookotherusers', 'booking'), ['class' => 'btn btn-primary btn-sm me-2']) .
         "</span>";
     }
 
@@ -989,14 +1020,14 @@ if (!$tableallbookings->is_downloading()) {
         if (!empty($mailtolink)) {
             $actionbuttonstop .= "<span>" .
                 html_writer::link($mailtolink, '<i class="fa fa-envelope fa-fw" aria-hidden="true"></i>&nbsp;' .
-                    get_string('sendmailtoallbookedusers', 'booking'), ['class' => 'btn btn-primary btn-sm mr-2']) .
+                    get_string('sendmailtoallbookedusers', 'booking'), ['class' => 'btn btn-primary btn-sm me-2']) .
             "</span>";
         }
     }
 
     // Button to download signin sheet.
     $actionbuttonstop .=
-        '<button class="btn btn-primary btn-sm mr-2" id="downloadsigninsheet-top-btn" buttonaction='
+        '<button class="btn btn-primary btn-sm me-2" id="downloadsigninsheet-top-btn" buttonaction='
         . $bookingoption->booking->settings->toporientation . '>
             <i class="fa fa-download fa-fw" aria-hidden="true"></i>&nbsp;' .
             get_string('signinsheetdownload', 'mod_booking') .
@@ -1263,7 +1294,11 @@ if (!$tableallbookings->is_downloading()) {
 
     // We call the template render to display how many users are in previously booked list.
     $data = new booked_users('option', $optionid, false, false, false, false, false, false, false, true);
-    $previouslybooked = $renderer->render_booked_users($data);
+    if (!empty($data->previouslybooked)) {
+        $previouslybooked = $renderer->render_booked_users($data);
+    } else {
+        $previouslybooked = '';
+    }
 
     if (!empty($previouslybooked)) {
         $contents = html_writer::tag(

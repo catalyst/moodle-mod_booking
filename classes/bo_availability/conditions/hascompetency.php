@@ -87,6 +87,16 @@ class hascompetency implements bo_condition {
     }
 
     /**
+     * Reset method to clear the singleton state.
+     *
+     * @return void
+     *
+     */
+    public static function reset_instance(): void {
+        self::$instance = null;
+    }
+
+    /**
      * Constructor.
      *
      * @param ?int $id
@@ -121,6 +131,25 @@ class hascompetency implements bo_condition {
      * @return bool
      */
     public function is_shown_in_mform(): bool {
+        return true;
+    }
+
+    /**
+     * Returns the name of the condition.
+     *
+     * @return string
+     *
+     */
+    public function get_name(): string {
+        return get_string('bocondhascompetency', 'mod_booking');
+    }
+
+    /**
+     * Returns whether the condition is skippable or not.
+     *
+     * @return bool
+     */
+    public function is_skippable(): bool {
         return true;
     }
 
@@ -187,9 +216,10 @@ class hascompetency implements bo_condition {
      * This will be used if the conditions should not only block booking...
      * ... but actually hide the conditons alltogether.
      * @param int $userid
+     * @param array $params This is the array with parameters for the sql query.
      * @return array
      */
-    public function return_sql(int $userid = 0): array {
+    public function return_sql(int $userid = 0, &$params = []): array {
         return ['', '', '', [], ''];
     }
 
@@ -392,7 +422,10 @@ class hascompetency implements bo_condition {
             );
         }
 
-        $mform->addElement('html', '<hr class="w-50"/>');
+        $mform->addElement(
+            'html',
+            '<div id="bo_cond_hascompetency_restrict_hr" class="d-flex justify-content-end"><hr class="w-75"/></div>'
+        );
     }
 
     /**

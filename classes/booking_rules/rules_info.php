@@ -380,7 +380,7 @@ class rules_info {
         global $DB;
         // Only fetch rules which need to be reapplied. At the moment, it's just one.
         // Eventbased rules don't have to be reapplied.
-        if ($records = $DB->get_records('booking_rules', ['rulename' => 'rule_daysbefore'])) {
+        if ($records = $DB->get_records_list('booking_rules', 'rulename', ['rule_daysbefore', 'rule_specifictime'])) {
             foreach ($records as $record) {
                 if (!$rule = self::get_rule($record->rulename)) {
                     continue;
@@ -423,8 +423,15 @@ class rules_info {
                 return;
             };
         }
-        // Triggered again with optionid 1 ??
-        $optionid = $event->objectid ?? $data['other']['itemid'] ?? 0;
+        // Resolve booking option id from event payload.
+        // For some events (e.g. bookingextension_todolist item events) objectid is not the option id.
+        $optionid = (int)($data['other']['optionid'] ?? 0);
+        if (empty($optionid)) {
+            $optionid = (int)($event->objectid ?? 0);
+        }
+        if (empty($optionid) && !empty($data['other']['itemid'])) {
+            $optionid = (int)$data['other']['itemid'];
+        }
         $eventname = "\\" . get_class($event);
 
         $contextid = $event->contextid;

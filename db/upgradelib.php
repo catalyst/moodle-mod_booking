@@ -224,3 +224,65 @@ function booking_upgrade_change_id_425_to_391() {
         }
     }
 }
+
+/**
+ * Migrate old selflearningcourse json flag to new booking option type.
+ */
+function migrate_selflearningcourse_json_to_type_2025122201(): void {
+    global $DB;
+    // Fetch all booking options.
+    $records = $DB->get_records('booking_options', [], '', 'id, json, type');
+    if (empty($records)) {
+        return;
+    }
+    foreach ($records as $record) {
+        $type = 0; // Default type.
+        if (!empty($record->json)) {
+            $jsonobject = json_decode($record->json);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                if (
+                    isset($jsonobject->selflearningcourse)
+                    && $jsonobject->selflearningcourse == 1
+                ) {
+                    $type = 1; // Self-learning course type.
+                }
+            }
+        }
+        if ($record->type === null) {
+            // Only update if type is not already set.
+            $DB->set_field(
+                'booking_options',
+                'type',
+                $type,
+                ['id' => $record->id]
+            );
+        }
+    }
+}
+
+/**
+ * Delete custom fields in tool_certificate component.
+ *
+ * @return void
+ */
+function delete_customfields_in_tool_certificate_2026030500(): void {
+    global $DB;
+
+    // Get the categories for this component.
+    $categories = $DB->get_records('customfield_category', ['component' => 'tool_certificate']);
+
+    foreach ($categories as $category) {
+        $categorycontroller = \core_customfield\category_controller::create($category->id);
+        try {
+            $handler = \core_customfield\handler::get_handler(
+                $category->component,
+                $category->area,
+                $category->itemid
+            );
+            $handler->delete_category($categorycontroller);
+        } catch (moodle_exception $e) {
+            // Handler class not found (plugin already removed) — delete directly via API.
+            \core_customfield\api::delete_category($categorycontroller);
+        }
+    }
+}
